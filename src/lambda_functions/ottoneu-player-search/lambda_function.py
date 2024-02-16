@@ -1,10 +1,11 @@
 import json
 import boto3
 from boto3.dynamodb.conditions import Key
+from urllib.parse import unquote
 
 def lambda_handler(event, context):
     try:
-        search_name = event["search_name"]
+        search_name = event["queryStringParameters"]["search_name"]
     except KeyError:
         return {
             'statusCode': 400,
@@ -15,6 +16,7 @@ def lambda_handler(event, context):
             'statusCode': 400,
             'body': json.dumps('Empty string passed as search name')
         }
+    search_name = unquote(search_name)
     search_name = normalize(search_name)
     print(f'search_name = {search_name}')
     

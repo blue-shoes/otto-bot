@@ -45,7 +45,7 @@ def get_avg_salary_df(game_type : int = None) -> DataFrame:
     rows = salary_soup.find_all('player')
     parsed_rows = [__parse_avg_salary_row(row) for row in rows]
     df = DataFrame(parsed_rows)
-    df.columns = ['ottoneu_id','name','search_name','fg_majorleagueid','fg_minorleagueid','positions','org']
+    df.columns = ['ottoneu_id','name','search_name','search_last_name','fg_majorleagueid','fg_minorleagueid','positions','org']
     df.set_index('ottoneu_id', inplace=True)
     df.index = df.index.astype(int, copy=False)
     
@@ -53,11 +53,14 @@ def get_avg_salary_df(game_type : int = None) -> DataFrame:
     return df
     
 def __parse_avg_salary_row(row) -> List[str]:
-    '''Returns a list of string describing the average salary row'''
+    '''Returns a list of string describing the player row'''
     parsed_row = []
     parsed_row.append(row.get('ottoneu_id'))
     parsed_row.append(row.get('name'))
-    parsed_row.append(normalize(row.get('name')))
+    full_search_name = clean_full_name(row.get('name'))
+    parsed_row.append(full_search_name)
+    search_last_name = get_search_last_name(full_search_name)
+    parsed_row.append(search_last_name)
     parsed_row.append(str(row.get('fg_majorleague_id')))
     parsed_row.append(row.get('fg_minorleague_id'))
     parsed_row.append(row.find('positions').text)
@@ -77,6 +80,31 @@ normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'Ñ': 'N', 'ñ': 'n',
              'Ç': 'C', 'ç': 'c',
              '§': 'S',  '³': '3', '²': '2', '¹': '1'}
+
+def get_search_last_name(name:str) -> str:
+    name_split = name.split()
+    multi_word_ln = ['DE', 'DEL', 'DI', 'VAN', 'LA', 'ST']
+    for mwl in multi_word_ln:
+        if mwl in name_split: 
+            index = name_split.index(mwl)
+            return ' '.join(name_split[index:])
+    return name_split[-1]
+
+def clean_full_name(value:str) -> str:
+    cleaned = normalize(value)
+    cleaned = cleaned.replace('.', '')
+    cleaned = clear_if_ends_with(cleaned, ' JR')
+    cleaned = clear_if_ends_with(cleaned, ' SR')
+    cleaned = clear_if_ends_with(cleaned, ' II')
+    cleaned = clear_if_ends_with(cleaned, ' III')
+    cleaned = clear_if_ends_with(cleaned, ' IV')
+    cleaned = clear_if_ends_with(cleaned, ' V')
+    return cleaned
+
+def clear_if_ends_with(val:str, check:str) -> str:
+    if val.endswith(check):
+        return val[:-len(check)].strip()
+    return val
 
 
 def normalize(value:str) -> str:

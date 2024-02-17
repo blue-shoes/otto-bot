@@ -18,14 +18,22 @@ def lambda_handler(event, context):
         }
     search_name = unquote(search_name)
     search_name = normalize(search_name)
-    print(f'search_name = {search_name}')
+    search_name = clean_full_name(search_name)
     
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table('ottoneu-player-db')
     
+    split = search_name.split()
+    if len(split) == 1:
+        index = 'search_last_name'
+    elif split[0] in ['DE', 'DEL', 'DI', 'VAN', 'LA', 'ST']:
+        index = 'search_last_name'
+    else:
+        index = 'search_name'
+
     items = table.query(
-        IndexName="search_name-index",
-        KeyConditionExpression=Key("search_name").eq(search_name),
+        IndexName=f"{index}-index",
+        KeyConditionExpression=Key(f"{index}").eq(search_name),
     )
 
     results = []
@@ -56,6 +64,21 @@ normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'Ç': 'C', 'ç': 'c',
              '§': 'S',  '³': '3', '²': '2', '¹': '1'}
 
+def clean_full_name(value:str) -> str:
+    cleaned = normalize(value)
+    cleaned = cleaned.replace('.', '')
+    cleaned = clear_if_ends_with(cleaned, ' JR')
+    cleaned = clear_if_ends_with(cleaned, ' SR')
+    cleaned = clear_if_ends_with(cleaned, ' II')
+    cleaned = clear_if_ends_with(cleaned, ' III')
+    cleaned = clear_if_ends_with(cleaned, ' IV')
+    cleaned = clear_if_ends_with(cleaned, ' V')
+    return cleaned
+
+def clear_if_ends_with(val:str, check:str) -> str:
+    if val.endswith(check):
+        return val[:-len(check)].strip()
+    return val
 
 def normalize(value:str) -> str:
     """Function that removes most diacritics from strings and returns value in all caps"""

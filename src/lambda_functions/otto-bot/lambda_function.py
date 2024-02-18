@@ -1,58 +1,38 @@
 import json
 from urllib import parse as urlparse
 import base64
-import requests
 import boto3
 import os
 
 client = boto3.client('lambda')
+sqs = boto3.client('sqs')
+valid_commands = ['/show-player']
 
 def lambda_handler(event, context):
     
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
     
-    if msg_map['command'] == '/show-player':
-        return show_player(msg_map)
-    
-    return {
-        'statusCode': 404,
-        'body': json.dumps('Not a valid command')
-    }
-
-def show_player(msg_map):
-
-    search_paramters = {
-        "search_name" : msg_map['text']
-    }
-    
-    response = client.invoke(
-        FunctionName = os.environ['player_search_lambda_arn'],
-        InvocationType = 'RequestResponse',
-        Payload = json.dumps(search_paramters)
-    )
-    
-    lambda_response = json.load(response['Payload'])
-    
-    player_list = json.loads(lambda_response['body'])
-    player_one = player_list[0]
-    player_link = f'https://ottoneu.fangraphs.com/playercard/{player_one["ottoneu_id"]}/3'
-    
-    text_response = f'<{player_link}|{player_one["name"]}> {player_one["positions"]}, {player_one["org"]}'
-
-    response_dict = {}
-    response_dict['response_type'] = 'in_channel'
-    response_dict['text'] = text_response
-    
-    header = {'Content-Type': 'application/json'}
-    response = requests.post(msg_map['response_url'], headers=header, data=json.dumps(response_dict))
-    
-    if response.status_code != 200:
-        print(f'Error getting response_url: {response.status_code}: {response.text}')
+    if msg_map.get('command', None) not in valid_commands:
         return {
-            'statusCode': 200,
-            'text': 'There was an error getting the player'
+            'statusCode': 400,
+            'body': json.dumps(f'Not a valid slash command: {msg_map['command']}')
+        }
+    
+    if not msg_map.get('text', None):
+        return {
+            'statusCode': 400, 
+            'body': json.dumps(f'No arguments given for slash command: {msg_map['command']}')
+        }
+    
+    queueurl = sqs.get_queue_url(QueueName='Otto-bot-queue')['QueueUrl']
+    try:
+        sqs.send_message(QueueUrl=queueurl, MessageBody=json.dumps(msg_map))
+    except:
+        return {
+            'statusCode': 400, 
+            'body': json.dumps(f'Error when submitting to the queue.')
         }
     
     return {
-        'statusCode': 200
+        'statusCode': 202
     }

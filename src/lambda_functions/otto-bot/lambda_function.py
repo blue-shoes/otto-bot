@@ -27,7 +27,15 @@ def lambda_handler(event, context):
         }
     
     if msg_map['command'] in loading_commands:
-        initiate_loading_modal(msg_map)
+        modal_res = initiate_loading_modal(msg_map)
+        if modal_res['ok']:
+            msg_map['view_id'] = modal_res['view']['id']
+        else:
+            print(modal_res)
+            return {
+            'statusCode': 400, 
+            'body': json.dumps(f'Error creating interactive dialog')
+        }
     
     queueurl = sqs.get_queue_url(QueueName='Otto-bot-queue')['QueueUrl']
     try:
@@ -54,8 +62,7 @@ def initiate_loading_modal(msg_map):
     data = data.encode("utf-8")
     request = urllib.request.Request(post_url, data=data, method="POST")
     request.add_header("Content-Type", "application/x-www-form-urlencoded")
-    res = urllib.request.urlopen(request).read()
-    print(res)
+    res = json.loads(urllib.request.urlopen(request).read().decode('utf-8'))
     return res
 
 def get_modal():

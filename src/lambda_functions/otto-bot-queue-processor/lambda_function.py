@@ -156,7 +156,7 @@ def lambda_handler(event, context):
     
     print(msg_map)
     
-    if msg_map['command'] == '/show-player':
+    if msg_map['command'] == '/link-player':
         return show_player(msg_map)
     
     return {

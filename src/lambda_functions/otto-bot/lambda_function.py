@@ -8,8 +8,8 @@ import os
 
 client = boto3.client('lambda')
 sqs = boto3.client('sqs')
-valid_commands = ['/show-player']
-loading_commands = ['/show-player']
+valid_commands = ['/link-player']
+loading_commands = ['/link-player']
 
 def lambda_handler(event, context):
     
@@ -24,7 +24,7 @@ def lambda_handler(event, context):
         elif payload['type'] == 'view_submission':
             metadata = payload['view']['private_metadata'].split(',') 
             command = metadata[0]
-            if command == '/show-player':
+            if command == '/link-player':
                 vals = payload['view']['state']['values']
                 selected_player = vals['player_block']['player_selection_action']['selected_option']
                 player_text = selected_player['text']['text']

@@ -14,10 +14,73 @@ loading_commands = ['/show-player']
 def lambda_handler(event, context):
     
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
+    
+    if msg_map.get('payload', None):
+        payload = json.loads(msg_map['payload'])
+        if payload['type'] == 'block_actions':
+            return {
+                'statusCode': 200
+            }
+        elif payload['type'] == 'view_submission':
+            metadata = payload['view']['private_metadata'].split(',') 
+            command = metadata[0]
+            if command == '/show-player':
+                vals = payload['view']['state']['values']
+                selected_player = vals['player_block']['player_selection_action']['selected_option']
+                player_text = selected_player['text']['text']
+                name_split = player_text.split(',')
+                ids = selected_player['value'].split(',')
+                
+                link_types = [sel['value'] for sel in vals['link_block']['checkboxes-action']['selected_options']]
+
+                if not link_types:
+                    print(msg_map['payload'])
+                    return {
+                              "response_action": "errors",
+                              "errors": {
+                                    "link_block": "You may not select a due date in the past"
+                               }
+                            }
+
+                if 'ottoneu' in link_types:
+
+                    selected_format = vals['format_block']['format_select_action']['selected_option']['value']
+    
+                    otto_player_link = f'https://ottoneu.fangraphs.com/playercard/{ids[0]}/{selected_format}'
+        
+                    text_response = f'<{otto_player_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+                    
+                    if 'fg' in link_types:
+                        fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
+                        text_response += f' (<{fg_link}|FG>)'
+                
+                elif 'fg' in link_types:
+                    fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
+                    text_response = f'<{fg_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+                
+                else:
+                    return {
+                        'statusCode': 400,
+                        'body': json.dumps(f'Invalid link type(s) "{link_types}" selected".')
+                    }
+
+                response_dict = {}
+                response_dict['response_type'] = 'in_channel'
+                response_dict['text'] = text_response
+                
+                header = {'Content-Type': 'application/json'}
+                response = requests.post(metadata[1], headers=header, data=json.dumps(response_dict))
+
+                return {
+                    'statusCode': 200
+                }
+    
     if msg_map.get('command', None) not in valid_commands:
+        print(event)
+        print(msg_map)
         return {
             'statusCode': 400,
-            'body': json.dumps(f'Not a valid slash command: {msg_map['command']}')
+            'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}')
         }
     
     if not msg_map.get('text', None):
@@ -28,6 +91,7 @@ def lambda_handler(event, context):
     
     if msg_map['command'] in loading_commands:
         modal_res = initiate_loading_modal(msg_map)
+        print(modal_res)
         if modal_res['ok']:
             msg_map['view_id'] = modal_res['view']['id']
         else:
@@ -72,7 +136,7 @@ def get_modal():
         "callback_id": <callbackid>,
         "title": {
             "type": "plain_text",
-            "text": "Otto-bot Input Helper",
+            "text": "Otto-bot Wizard",
             "emoji": true
         },
         "submit": {

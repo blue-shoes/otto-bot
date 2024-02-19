@@ -121,7 +121,7 @@ def initiate_loading_modal(msg_map):
     data = urllib.parse.urlencode({
         "trigger_id": msg_map['trigger_id'],
         "view": view,
-        "token": os.environ['BOT_TOKEN']
+        "token": os.environ[f'{msg_map["team_id"]}_token']
     })
     data = data.encode("utf-8")
     request = urllib.request.Request(post_url, data=data, method="POST")

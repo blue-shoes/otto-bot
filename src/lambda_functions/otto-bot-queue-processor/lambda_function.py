@@ -197,7 +197,7 @@ def update_view(msg_map, view):
     data = urllib.parse.urlencode({
         "view": view,
         "view_id": msg_map['view_id'],
-        "token": os.environ['BOT_TOKEN']
+        "token": os.environ[f'{msg_map["team_id"]}_token']
     })
     data = data.encode("utf-8")
     request = urllib.request.Request(post_url, data=data, method="POST")

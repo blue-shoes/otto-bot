@@ -99,6 +99,7 @@ def clean_full_name(value:str) -> str:
     cleaned = clear_if_ends_with(cleaned, ' III')
     cleaned = clear_if_ends_with(cleaned, ' IV')
     cleaned = clear_if_ends_with(cleaned, ' V')
+    cleaned = ' '.join(cleaned.split)
     return cleaned
 
 def clear_if_ends_with(val:str, check:str) -> str:

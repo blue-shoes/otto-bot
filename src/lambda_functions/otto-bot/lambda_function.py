@@ -15,6 +15,13 @@ def lambda_handler(event, context):
     
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
     
+    
+    print(event['requestContext'])
+    
+    msg_map['stage'] = event['requestContext']['stage']
+    
+    print(msg_map)
+    
     if msg_map.get('payload', None):
         payload = json.loads(msg_map['payload'])
         if payload['type'] == 'block_actions':
@@ -75,7 +82,14 @@ def lambda_handler(event, context):
                     'statusCode': 200
                 }
     
-    if msg_map.get('command', None) not in valid_commands:
+    valid_command = False
+    input_command = msg_map.get('command', None)
+    for command in valid_commands:
+        if input_command and command.startswith(command):
+            valid_command = True
+            break
+    
+    if not valid_command:
         print(event)
         print(msg_map)
         return {
@@ -83,23 +97,18 @@ def lambda_handler(event, context):
             'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}')
         }
     
-    if not msg_map.get('text', None):
-        return {
-            'statusCode': 400, 
-            'body': json.dumps(f'No arguments given for slash command: {msg_map['command']}')
-        }
-    
-    if msg_map['command'] in loading_commands:
-        modal_res = initiate_loading_modal(msg_map)
-        print(modal_res)
-        if modal_res['ok']:
-            msg_map['view_id'] = modal_res['view']['id']
-        else:
+    for command in loading_commands:
+        if input_command and command.startswith(command):
+            modal_res = initiate_loading_modal(msg_map)
             print(modal_res)
-            return {
-            'statusCode': 400, 
-            'body': json.dumps(f'Error creating interactive dialog')
-        }
+            if modal_res['ok']:
+                msg_map['view_id'] = modal_res['view']['id']
+            else:
+                print(modal_res)
+                return {
+                'statusCode': 400, 
+                'body': json.dumps(f'Error creating interactive dialog')
+            }
     
     queueurl = sqs.get_queue_url(QueueName='Otto-bot-queue')['QueueUrl']
     try:
@@ -121,7 +130,7 @@ def initiate_loading_modal(msg_map):
     data = urllib.parse.urlencode({
         "trigger_id": msg_map['trigger_id'],
         "view": view,
-        "token": os.environ[f'{msg_map["team_id"]}_token']
+        "token": os.environ[f'{msg_map["stage"]}_{msg_map["team_id"]}_token']
     })
     data = data.encode("utf-8")
     request = urllib.request.Request(post_url, data=data, method="POST")

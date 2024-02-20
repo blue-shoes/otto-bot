@@ -5,7 +5,10 @@ from urllib.parse import unquote
 
 def lambda_handler(event, context):
     try:
-        search_name = event["queryStringParameters"]["search_name"]
+        if "search_name" in event:
+            search_name = event['search_name']
+        else:
+            search_name = event["queryStringParameters"]["search_name"]
     except KeyError:
         return {
             'statusCode': 400,

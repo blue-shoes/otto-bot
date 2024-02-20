@@ -152,11 +152,14 @@ SHOW_PLAYER_TEMPLATE = """
 
 def lambda_handler(event, context):
     
-    msg_map = json.loads(event['Records'][0]['body'])
+    if 'command' in event:
+        msg_map = event
+    else:
+        msg_map = json.loads(event['Records'][0]['body'])
     
     print(msg_map)
     
-    if msg_map['command'] == '/link-player':
+    if msg_map['command'].startswith('/link-player'):
         return show_player(msg_map)
     
     return {
@@ -166,14 +169,17 @@ def lambda_handler(event, context):
 
 def show_player(msg_map):
 
-    search_paramters = {
+    search_parameters = {
         "search_name" : msg_map['text']
     }
+    
+    search_version = os.environ[f'{msg_map["stage"]}_search_version']
     
     response = client.invoke(
         FunctionName = os.environ['player_search_lambda_arn'],
         InvocationType = 'RequestResponse',
-        Payload = json.dumps(search_paramters)
+        Payload = json.dumps(search_parameters),
+        Qualifier = search_version
     )
     
     lambda_response = json.load(response['Payload'])
@@ -197,7 +203,7 @@ def update_view(msg_map, view):
     data = urllib.parse.urlencode({
         "view": view,
         "view_id": msg_map['view_id'],
-        "token": os.environ[f'{msg_map["team_id"]}_token']
+        "token": os.environ[f'{msg_map["stage"]}_{msg_map["team_id"]}_token']
     })
     data = data.encode("utf-8")
     request = urllib.request.Request(post_url, data=data, method="POST")

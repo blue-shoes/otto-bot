@@ -3,7 +3,9 @@ from bs4 import BeautifulSoup as Soup
 from pandas import DataFrame
 from typing import List
 import requests
-import boto3
+import os
+
+from pymongo import MongoClient, UpdateOne
 
 import io
 import re
@@ -14,29 +16,52 @@ from typing import List, Iterable
 import pandas as pd
 import requests
 
+client = MongoClient(host=os.environ.get("ATLAS_URI"))
+player_db = client.players
+
 def lambda_handler(event, context):
     try:
         df = get_avg_salary_df()
     except Exception as e:
+        print(e)
         return {
             'statusCode': 500,
             'body': json.dumps('Error getting player universe')
         }
-    
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('ottoneu-player-db')
-    
+        
+    players_col = player_db.ottoneu
+
     try:
-        with table.batch_writer() as batch:
-            for idx, row in df.iterrows():
-                player_dict = row.to_dict()
-                player_dict['ottoneu_id'] = int(idx)
-                batch.put_item(Item=player_dict)
-    except:
+        players = []
+        for idx, row in df.iterrows():
+            player_dict = row.to_dict()
+            player_dict = {k:v for k,v in player_dict.items() if v}
+            player_dict['ottoneu_id'] = int(idx)
+            player_dict['_id'] = int(idx)
+
+            players.append(UpdateOne({'_id': player_dict['_id']},  {'$set': player_dict}, upsert=True))
+        players_col.bulk_write(players, ordered=False)
+    except Exception as e:
+        print(e)
         return {
             'statusCode': 500,
             'body': json.dumps('Error writing player universe')
         }
+
+    mlbam_update_players = players_col.find({"$and": [
+            {'mlbam_id': {"$exists": False}},
+            {'fg_majorleagueid': {'$exists': True}}
+        ]
+    })
+    
+    mlbam_updates = []
+    for player in mlbam_update_players:
+        p_df = playerid_reverse_lookup([int(player['fg_majorleagueid'])], key_type='fangraphs')
+        if len(p_df) > 0:
+            mlbam_id = p_df.loc[0,'key_fangraphs'].item()
+            mlbam_updates.append(UpdateOne({'_id': player['_id']},  {'$set': {'mlbam_id': mlbam_id}}, upsert=False))
+    if mlbam_updates:
+        players_col.bulk_write(mlbam_updates, ordered=False)
 
     return {
         'statusCode': 200,
@@ -54,7 +79,7 @@ def get_avg_salary_df(game_type : int = None) -> DataFrame:
     rows = salary_soup.find_all('player')
     parsed_rows = [__parse_avg_salary_row(row) for row in rows]
     df = DataFrame(parsed_rows)
-    df.columns = ['ottoneu_id','name','search_name','search_last_name','fg_majorleagueid','fg_minorleagueid','positions','org', 'mlbamid']
+    df.columns = ['ottoneu_id','name','search_name','fg_majorleagueid','fg_minorleagueid','positions','org']
     df.set_index('ottoneu_id', inplace=True)
     df.index = df.index.astype(int, copy=False)
     
@@ -66,23 +91,13 @@ def __parse_avg_salary_row(row) -> List[str]:
     parsed_row = []
     parsed_row.append(row.get('ottoneu_id'))
     parsed_row.append(row.get('name'))
-    full_search_name = clean_full_name(row.get('name'))
+    full_search_name = normalize(row.get('name'))
     parsed_row.append(full_search_name)
-    search_last_name = get_search_last_name(full_search_name)
-    parsed_row.append(search_last_name)
     fg_major_id = str(row.get('fg_majorleague_id'))
     parsed_row.append(fg_major_id)
     parsed_row.append(row.get('fg_minorleague_id'))
     parsed_row.append(row.find('positions').text)
     parsed_row.append(row.find('mlb_org').text)
-    if fg_major_id:
-        p_df = playerid_reverse_lookup([int(fg_major_id)], key_type='fangraphs')
-        if len(p_df) > 0:
-            parsed_row.append(p_df.loc[0,'key_fangraphs'])
-        else:
-            parsed_row.append(None)
-    else:
-        parsed_row.append(None)
     return parsed_row
 
 normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
@@ -98,33 +113,6 @@ normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'Ñ': 'N', 'ñ': 'n',
              'Ç': 'C', 'ç': 'c',
              '§': 'S',  '³': '3', '²': '2', '¹': '1'}
-
-def get_search_last_name(name:str) -> str:
-    name_split = name.split()
-    multi_word_ln = ['DE', 'DEL', 'DI', 'VAN', 'LA', 'ST']
-    for mwl in multi_word_ln:
-        if mwl in name_split: 
-            index = name_split.index(mwl)
-            return ' '.join(name_split[index:])
-    return name_split[-1]
-
-def clean_full_name(value:str) -> str:
-    cleaned = normalize(value)
-    cleaned = cleaned.replace('.', '')
-    cleaned = clear_if_ends_with(cleaned, ' JR')
-    cleaned = clear_if_ends_with(cleaned, ' SR')
-    cleaned = clear_if_ends_with(cleaned, ' II')
-    cleaned = clear_if_ends_with(cleaned, ' III')
-    cleaned = clear_if_ends_with(cleaned, ' IV')
-    cleaned = clear_if_ends_with(cleaned, ' V')
-    cleaned = ' '.join(cleaned.split())
-    return cleaned
-
-def clear_if_ends_with(val:str, check:str) -> str:
-    if val.endswith(check):
-        return val[:-len(check)].strip()
-    return val
-
 
 def normalize(value:str) -> str:
     """Function that removes most diacritics from strings and returns value in all caps"""

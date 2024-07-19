@@ -58,7 +58,7 @@ def lambda_handler(event, context):
     for player in mlbam_update_players:
         p_df = playerid_reverse_lookup([int(player['fg_majorleagueid'])], key_type='fangraphs')
         if len(p_df) > 0:
-            mlbam_id = p_df.loc[0,'key_fangraphs'].item()
+            mlbam_id = p_df.loc[0,'key_mlbam'].item()
             mlbam_updates.append(UpdateOne({'_id': player['_id']},  {'$set': {'mlbam_id': mlbam_id}}, upsert=False))
     if mlbam_updates:
         players_col.bulk_write(mlbam_updates, ordered=False)

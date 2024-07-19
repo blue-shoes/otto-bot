@@ -15,7 +15,6 @@ def lambda_handler(event, context):
     
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
     
-    
     print(event['requestContext'])
     
     msg_map['stage'] = event['requestContext']['stage']
@@ -31,13 +30,12 @@ def lambda_handler(event, context):
         elif payload['type'] == 'view_submission':
             metadata = payload['view']['private_metadata'].split(',') 
             command = metadata[0]
-            if command == '/link-player':
+            if command == '/link-player' or command == '/link-player-dev':
                 vals = payload['view']['state']['values']
                 selected_player = vals['player_block']['player_selection_action']['selected_option']
                 player_text = selected_player['text']['text']
                 name_split = player_text.split(',')
                 ids = selected_player['value'].split(',')
-                
                 link_types = [sel['value'] for sel in vals['link_block']['checkboxes-action']['selected_options']]
 
                 if not link_types:
@@ -45,7 +43,7 @@ def lambda_handler(event, context):
                     return {
                               "response_action": "errors",
                               "errors": {
-                                    "link_block": "You may not select a due date in the past"
+                                    "link_block": "Must select at least one linkage"
                                }
                             }
 
@@ -60,10 +58,22 @@ def lambda_handler(event, context):
                     if 'fg' in link_types:
                         fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
                         text_response += f' (<{fg_link}|FG>)'
+                    
+                    if 'sc' in link_types:
+                        sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+                        text_response += f' (<{sc_link}|SC>)'
                 
                 elif 'fg' in link_types:
                     fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
                     text_response = f'<{fg_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+                    
+                    if 'sc' in link_types:
+                        sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+                        text_response += f' (<{sc_link}|SC>)'
+                
+                elif 'sc' in link_types:
+                    sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+                    text_response = f'<{sc_link}|{name_split[0]}> {", ".join(name_split[1:])}'
                 
                 else:
                     return {
@@ -96,6 +106,12 @@ def lambda_handler(event, context):
             'statusCode': 400,
             'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}')
         }
+    
+    #if not msg_map.get('text', None):
+    #    return {
+    #        'statusCode': 400, 
+    #        'body': json.dumps(f'No arguments given for slash command: {msg_map['command']}')
+    #    }
     
     for command in loading_commands:
         if input_command and command.startswith(command):

@@ -135,6 +135,13 @@ SHOW_PLAYER_TEMPLATE = """
                                         "text": "*FanGraphs Player Page*" 
                                     }, 
                                     "value": "fg" 
+                                }, 
+                                { 
+                                    "text": { 
+                                        "type": "mrkdwn", 
+                                        "text": "*StatCast Player Page*" 
+                                    }, 
+                                    "value": "sc" 
                                 }
                             ], 
                             "initial_options": [{ 
@@ -170,7 +177,8 @@ def lambda_handler(event, context):
 def show_player(msg_map):
 
     search_parameters = {
-        "search_name" : msg_map['text']
+        "search_name" : msg_map['text'],
+        "stage" : msg_map['stage']
     }
     
     search_version = os.environ[f'{msg_map["stage"]}_search_version']
@@ -184,7 +192,10 @@ def show_player(msg_map):
     
     lambda_response = json.load(response['Payload'])
     
-    player_list = json.loads(lambda_response['body'])
+    if 'body' in lambda_response:
+        player_list = json.loads(lambda_response['body'])
+    else:
+        player_list = None
 
     if player_list:
         blocks = get_modal_response_block_show_players(player_list)
@@ -237,10 +248,12 @@ def get_modal_response_block_show_players(player_list):
     text_player_list = []
     for player_dict in player_list:
         name = f"{player_dict['name']}, {player_dict['positions']}, {player_dict['org']}"
-        if player_dict['fg_majorleagueid']:
+        if 'fg_majorleagueid' in player_dict:
             id = f'{player_dict['ottoneu_id']},{player_dict['fg_majorleagueid']}'
         else:
             id = f'{player_dict['ottoneu_id']},{player_dict['fg_minorleagueid']}'
+        if 'mlbam_id' in player_dict and player_dict['mlbam_id'] != '0':
+            id += f',{player_dict['mlbam_id']}'
         text_player_list.append(f'{{ \
 						"text": {{ \
 							"type": "plain_text", \

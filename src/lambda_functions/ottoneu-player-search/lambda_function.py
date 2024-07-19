@@ -1,7 +1,10 @@
 import json
-import boto3
-from boto3.dynamodb.conditions import Key
 from urllib.parse import unquote
+import os
+from pymongo import MongoClient
+
+client = MongoClient(host=os.environ.get("ATLAS_URI"))
+player_db = client.players
 
 def lambda_handler(event, context):
     try:
@@ -21,27 +24,14 @@ def lambda_handler(event, context):
         }
     search_name = unquote(search_name)
     search_name = normalize(search_name)
-    search_name = clean_full_name(search_name)
+    search_name = f'.*{search_name}.*'
     
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('ottoneu-player-db')
-    
-    split = search_name.split()
-    if len(split) == 1:
-        index = 'search_last_name'
-    elif split[0] in ['DE', 'DEL', 'DI', 'VAN', 'LA', 'ST']:
-        index = 'search_last_name'
-    else:
-        index = 'search_name'
+    players_col = player_db.ottoneu
 
-    items = table.query(
-        IndexName=f"{index}-index",
-        KeyConditionExpression=Key(f"{index}").eq(search_name),
-    )
-
-    results = []
+    results_cursor = players_col.find({'search_name': {'$regex': search_name, '$options': 'i'}})
     
-    for item in items['Items']:
+    results = list()
+    for item in results_cursor:
         result = {}
         for key, val in item.items():
             result[key] = val
@@ -66,22 +56,6 @@ normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'Ñ': 'N', 'ñ': 'n',
              'Ç': 'C', 'ç': 'c',
              '§': 'S',  '³': '3', '²': '2', '¹': '1'}
-
-def clean_full_name(value:str) -> str:
-    cleaned = normalize(value)
-    cleaned = cleaned.replace('.', '')
-    cleaned = clear_if_ends_with(cleaned, ' JR')
-    cleaned = clear_if_ends_with(cleaned, ' SR')
-    cleaned = clear_if_ends_with(cleaned, ' II')
-    cleaned = clear_if_ends_with(cleaned, ' III')
-    cleaned = clear_if_ends_with(cleaned, ' IV')
-    cleaned = clear_if_ends_with(cleaned, ' V')
-    return cleaned
-
-def clear_if_ends_with(val:str, check:str) -> str:
-    if val.endswith(check):
-        return val[:-len(check)].strip()
-    return val
 
 def normalize(value:str) -> str:
     """Function that removes most diacritics from strings and returns value in all caps"""

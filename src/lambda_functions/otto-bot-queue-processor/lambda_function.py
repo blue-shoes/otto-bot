@@ -6,6 +6,187 @@ import urllib
 
 client = boto3.client('lambda')
 
+TRADE_TEMPLATE = """
+	"blocks": [
+		{
+			"type": "section",
+			"block_id": "team_1",
+			"text": {
+				"type": "mrkdwn",
+				"text": "Team 1 Players"
+			},
+			"accessory": {
+				"type": "multi_external_select",
+				"placeholder": {
+					"type": "plain_text",
+					"text": "Select options",
+					"emoji": true
+				},
+				"action_id": "player-search-action-1"
+			}
+		},
+		{
+			"type": "section",
+			"block_id": "team_2",
+			"text": {
+				"type": "mrkdwn",
+				"text": "Team 2 Players"
+			},
+			"accessory": {
+				"type": "multi_external_select",
+				"placeholder": {
+					"type": "plain_text",
+					"text": "Select options",
+					"emoji": true
+				},
+				"action_id": "player-search-action-2"
+			}
+		},
+		{
+			"type": "input",
+			"block_id": "league_number",
+			"element": {
+				"type": "plain_text_input",
+				"action_id": "plain_text_input-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "League Number",
+				"emoji": false
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "Format:"
+			},
+			"block_id": "format_block",
+			"accessory": {
+				"type": "static_select",
+				"placeholder": {
+					"type": "plain_text",
+					"text": "Select scoring format"
+				},
+				"initial_option": {
+					"text": {
+						"type": "plain_text",
+						"text": "FanGraphs Points"
+					},
+					"value": "3"
+				},
+				"options": [
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "FanGraphs Points"
+						},
+						"value": "3"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "SABR Points"
+						},
+						"value": "4"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "Classic 4x4"
+						},
+						"value": "1"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "Old School 5x5"
+						},
+						"value": "2"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "H2H FanGraphs Points"
+						},
+						"value": "5"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "H2H SABR Points"
+						},
+						"value": "6"
+					}
+				],
+				"action_id": "format_select_action"
+			}
+		},
+		{
+			"type": "input",
+			"block_id": "loan_type",
+			"element": {
+				"type": "radio_buttons",
+				"initial_option": {
+				    "text": {
+							"type": "plain_text",
+							"text": "Full Loan",
+							"emoji": true
+						},
+						"value": "full-loan",
+				},
+				"options": [
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "Full Loan",
+							"emoji": true
+						},
+						"value": "full-loan",
+						
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "No Loan",
+							"emoji": true
+						},
+						"value": "no-loan"
+					},
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "Other",
+							"emoji": true
+						},
+						"value": "partial-loan"
+					}
+				],
+				"action_id": "checkboxes-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "Loan amount",
+				"emoji": true
+			}
+		},
+		{
+			"type": "input",
+			"block_id": "partial_loan",
+			"element": {
+				"type": "plain_text_input",
+				"action_id": "plain_text_input-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "Partial loan amount",
+				"emoji": true
+			},
+			"optional": true
+		}
+	]
+"""
+
 VIEW_TEMPLATE = """
     {
         "type": "modal",
@@ -159,6 +340,8 @@ SHOW_PLAYER_TEMPLATE = """
 
 def lambda_handler(event, context):
     
+    print(event)
+    
     if 'command' in event:
         msg_map = event
     else:
@@ -169,9 +352,22 @@ def lambda_handler(event, context):
     if msg_map['command'].startswith('/link-player'):
         return show_player(msg_map)
     
+    if msg_map['command'].startswith('/trade-review'):
+        return show_trade_window(msg_map)
+    
     return {
         'statusCode': 404,
         'body': json.dumps('Not a valid command')
+    }
+
+def show_trade_window(msg_map):
+    print('in show trade window')
+    view = create_view(msg_map, TRADE_TEMPLATE)
+    update_res = update_view(msg_map, view)
+    print(update_res)
+        
+    return {
+        'statusCode': 200
     }
 
 def show_player(msg_map):
@@ -204,7 +400,7 @@ def show_player(msg_map):
     
     view = create_view(msg_map, blocks)
     update_res = update_view(msg_map, view)
-    
+    print('sending 200')
     return {
         'statusCode': 200
     }

@@ -30,7 +30,6 @@ def lambda_handler(event, context):
         elif payload['type'] == 'view_submission':
             metadata = payload['view']['private_metadata'].split(',') 
             command = metadata[0]
-            print(command)
             if command.startswith('/link-player'):
                 return link_player_result(payload, msg_map, metadata)
             if command.startswith('/trade-review'):
@@ -89,7 +88,6 @@ def lambda_handler(event, context):
 
 def trade_review_result(payload, msg_map, metadata):
     vals = payload['view']['state']['values']
-    print(vals)
     
     selected_format = vals['format_block']['format_select_action']['selected_option']['value']
     
@@ -138,15 +136,34 @@ def trade_review_result(payload, msg_map, metadata):
     if loan_type == 'partial-loan':
         text_response += '\nPartial loan: {partial_loan_amount}'
     
-    '''response_dict = {}
+    response_dict = {}
     response_dict['response_type'] = 'in_channel'
     response_dict['text'] = text_response
+    response_dict['channel'] = metadata[2]
+    response_dict['token']  = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    response_dict['unfurl_links'] = False
     
-    header = {'Content-Type': 'application/json'}
-    response = requests.post(metadata[1], headers=header, data=json.dumps(response_dict))
+    header = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    response = requests.post('https://slack.com/api/chat.postMessage', headers=header, data=urllib.parse.urlencode(response_dict))
     
-    print(response.content)'''
+    ts = json.loads(response.content.decode('utf-8'))['ts']
     
+    react_dict = dict()
+    react_dict['channel'] = metadata[2]
+    react_dict['token']  = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    react_dict['timestamp'] = ts
+    
+    react_dict['name'] = 'one'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    react_dict['name'] = 'two'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    react_dict['name'] = 'scales'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    print(response.content)
     
     return {
         'statusCode': 200

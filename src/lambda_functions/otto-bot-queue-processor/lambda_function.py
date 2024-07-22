@@ -421,7 +421,7 @@ def update_view(msg_map, view):
 def create_view(msg_map, blocks):
     view = VIEW_TEMPLATE
     view = view.replace('<callbackid>', '"' + msg_map['trigger_id'] + '"')
-    view = view.replace('<metadata>', '"' + msg_map['command'] +"," + msg_map['response_url'] + '"')
+    view = view.replace('<metadata>', '"' + msg_map['command'] +"," + msg_map['response_url'] + ',' + msg_map['channel_id']+ ',' + msg_map['team_id']+'"')
     view = view.replace('<blocks>', blocks)
     return view
 

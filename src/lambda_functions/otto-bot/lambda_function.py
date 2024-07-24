@@ -5,9 +5,11 @@ import base64
 import boto3
 import requests
 import os
+import time
 
-client = boto3.client('lambda')
+lambda_client = boto3.client('lambda')
 sqs = boto3.client('sqs')
+
 valid_commands = ['/link-player', '/trade-review']
 loading_commands = ['/link-player', '/trade-review']
 
@@ -93,8 +95,41 @@ def trade_review_result(payload, msg_map, metadata):
     
     league_id = vals['league_number']['plain_text_input-action']['value']
     
+    search_parameters = {
+        "league_id" : league_id
+    }
+    
+    search_version = os.environ[f'{msg_map["stage"]}_league_load_version']
+    
+    response = lambda_client.invoke(
+        FunctionName = os.environ['league_load_lambda_arn'],
+        InvocationType = 'RequestResponse',
+        Payload = json.dumps(search_parameters),
+        Qualifier = search_version
+    )
+    
+    lambda_response = json.load(response['Payload'])
+    
+    if 'body' in lambda_response:
+        player_dict = json.loads(lambda_response['body'])
+    else:
+        player_dict = None
+
+    if not player_dict:
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'Could not retrieve league {league_id}.')
+        }
+
     loan_type = vals['loan_type']['checkboxes-action']['selected_option']['value']
-    partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
+    if loan_type == 'partial-loan':
+        try:
+            partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
+            int_check = int(partial_loan_amount)
+        except ValueError:
+            partial_loan_amount = None
+    else:
+        partial_loan_amount = None
     
     if selected_format == '1':
         text_response = 'Scoring: 4x4'
@@ -110,32 +145,69 @@ def trade_review_result(payload, msg_map, metadata):
         text_response = 'Scoring: SABR H2H'
     else:
         return {
-            'statusCode': 400
+            'statusCode': 400,
+            'body': json.dumps(f'Invalid format {selected_format}.')
         }
-        
-    if loan_type == 'full-loan':
-        text_response += ', Full Loan'
-    elif loan_type == 'no-loan':
-        text_response += ', No Loan'
     
     text_response += '\n:one:\n'
     
     team_1_players_options = vals['team_1']['player-search-action-1']['selected_options']
-    #team_1_player_ids = (option['value'] for option in team_1_players_options)
-    
-    text_response += '\n'.join(f'<https://ottoneu.fangraphs.com/playercard/{option['value']}/{selected_format}|{option["text"]["text"]}>' for option in team_1_players_options)
-        
-    
+
+    team_1_salaries = 0
+    team_1_names = list()
+    for option in team_1_players_options:
+        rostered = player_dict.get(option['value'], None)
+        if not rostered:
+            return {
+                'statusCode': 400,
+                'body': json.dumps(f'Player not rostered in league {league_id}: {option["text"]["text"]}')
+            }
+        salary = rostered.get('Salary')
+        team_1_salaries += int(salary.split('$')[1])
+        team_1_names.append((option['value'], salary, option['text']['text'].split(', ')))
+
     team_2_players_options = vals['team_2']['player-search-action-2']['selected_options']
-    #team_2_player_ids = (option['value'] for option in team_2_players_options)
+
+    team_2_salaries = 0
+    team_2_names = list()
+    for option in team_2_players_options:
+        rostered = player_dict.get(option['value'])
+        salary = rostered.get('Salary')
+        if not rostered:
+            return {
+                'statusCode': 400,
+                'body': json.dumps(f'Player not rostered in league {league_id}: {option["text"]["text"]}')
+            }
+        team_2_salaries += int(salary.split('$')[1])
+        team_2_names.append((option['value'], salary, option['text']['text'].split(', ')))
+
+    team_1_more_salary = team_1_salaries > team_2_salaries
+    salary_diff = abs(team_1_salaries - team_2_salaries)
     
+    if partial_loan_amount and int(partial_loan_amount) < 0:
+        team_1_more_salary = not team_1_more_salary
+
+    text_response += '\n'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_1_names)
+
+    if team_1_more_salary and (loan_type == 'full-loan' or partial_loan_amount):
+        if loan_type == 'full-loan':
+            text_response += f'\nFull Loan (${salary_diff})'
+        else:
+            text_response += f'\n${abs(int(partial_loan_amount))} Loan'
+
     text_response += '\n:two:\n'
     
-    text_response += '\n'.join(f'<https://ottoneu.fangraphs.com/playercard/{option['value']}/{selected_format}|{option["text"]["text"]}>' for option in team_2_players_options)
-    
-    if loan_type == 'partial-loan':
-        text_response += '\nPartial loan: {partial_loan_amount}'
-    
+    text_response += '\n'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_2_names)
+
+    if not team_1_more_salary and (loan_type == 'full_loan' or partial_loan_amount):
+        if loan_type == 'full-loan':
+            text_response += f'\nFull Loan (${salary_diff})'
+        else:
+            text_response += f'\n${abs(int(partial_loan_amount))} Loan'
+
+    if loan_type == 'no-loan':
+        text_response += '\nNo Loan'
+
     response_dict = {}
     response_dict['response_type'] = 'in_channel'
     response_dict['text'] = text_response
@@ -147,6 +219,8 @@ def trade_review_result(payload, msg_map, metadata):
 
     response = requests.post('https://slack.com/api/chat.postMessage', headers=header, data=urllib.parse.urlencode(response_dict))
     
+    print(response.content)
+    
     ts = json.loads(response.content.decode('utf-8'))['ts']
     
     react_dict = dict()
@@ -157,8 +231,12 @@ def trade_review_result(payload, msg_map, metadata):
     react_dict['name'] = 'one'
     response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
     
+    time.sleep(0.2)
+    
     react_dict['name'] = 'two'
     response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    time.sleep(0.2)
     
     react_dict['name'] = 'scales'
     response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))

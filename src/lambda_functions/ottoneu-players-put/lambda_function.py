@@ -17,7 +17,7 @@ import pandas as pd
 import requests
 
 client = MongoClient(host=os.environ.get("ATLAS_URI"))
-player_db = client.players
+ottoneu_db = client.ottoneu
 
 def lambda_handler(event, context):
     try:
@@ -29,15 +29,17 @@ def lambda_handler(event, context):
             'body': json.dumps('Error getting player universe')
         }
         
-    players_col = player_db.ottoneu
+    players_col = ottoneu_db.players
 
     try:
         players = []
         for idx, row in df.iterrows():
             player_dict = row.to_dict()
             player_dict = {k:v for k,v in player_dict.items() if v}
-            player_dict['ottoneu_id'] = int(idx)
+            #player_dict['ottoneu_id'] = int(idx)
             player_dict['_id'] = int(idx)
+            if player_dict.get('ottoneu_id'):
+                player_dict.pop('ottoneu_id')
 
             players.append(UpdateOne({'_id': player_dict['_id']},  {'$set': player_dict}, upsert=True))
         players_col.bulk_write(players, ordered=False)

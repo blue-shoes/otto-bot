@@ -4,7 +4,7 @@ import os
 from pymongo import MongoClient
 
 client = MongoClient(host=os.environ.get("ATLAS_URI"))
-player_db = client.players
+ottoneu_db = client.ottoneu
 
 def lambda_handler(event, context):
     try:
@@ -26,7 +26,7 @@ def lambda_handler(event, context):
     search_name = normalize(search_name)
     search_name = f'.*{search_name}.*'
     
-    players_col = player_db.ottoneu
+    players_col = ottoneu_db.players
 
     results_cursor = players_col.find({'search_name': {'$regex': search_name, '$options': 'i'}})
     
@@ -35,7 +35,7 @@ def lambda_handler(event, context):
         result = {}
         for key, val in item.items():
             result[key] = val
-        result['ottoneu_id'] = int(str(result['ottoneu_id']))
+        result['ottoneu_id'] = int(str(result['_id']))
         results.append(result)
     
     return {

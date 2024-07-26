@@ -2,6 +2,7 @@ import json
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup as Soup
+from io import StringIO
 
 def lambda_handler(event, context):
     ''''Scrapes the /rosterexport page for a league (in csv format) and returns a DataFrame of the information. Index is Ottoneu Id'''
@@ -23,8 +24,9 @@ def lambda_handler(event, context):
     
     roster_export_url = f'https://ottoneu.fangraphs.com/{lg_id}/rosterexport'
     response = requests.get(roster_export_url)
+    
     rost_soup = Soup(response.text, 'html.parser')
-    df = pd.read_csv(json.loads(rost_soup.content[0].decode('utf-8')))
+    df = pd.read_csv(StringIO(rost_soup.contents[0]))
     df.set_index("ottoneu ID", inplace=True)
     df.index = df.index.astype(str, copy = False)
     roster_dict = df.to_dict('index')

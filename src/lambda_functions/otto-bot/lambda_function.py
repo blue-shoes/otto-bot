@@ -81,7 +81,7 @@ def lambda_handler(event, context):
     except:
         return {
             'statusCode': 400, 
-            'body': json.dumps(f'Error when submitting to the queue.')
+            'body': json.dumps('Error when submitting to the queue.')
         }
     
     return {
@@ -117,8 +117,16 @@ def trade_review_result(payload, msg_map, metadata):
 
     if not player_dict:
         return {
-            'statusCode': 400,
-            'body': json.dumps(f'Could not retrieve league {league_id}.')
+            'statusCode': 200,
+            "headers": {
+                    'Content-Type': 'application/json',
+                },
+            'body': json.dumps({
+                'response_action': 'errors',
+                'errors': {
+                    'league_number': f'League Id {league_id} not available in database.'
+                }
+            })
         }
 
     loan_type = vals['loan_type']['checkboxes-action']['selected_option']['value']
@@ -149,8 +157,6 @@ def trade_review_result(payload, msg_map, metadata):
             'body': json.dumps(f'Invalid format {selected_format}.')
         }
     
-    text_response += '\n:one:\n'
-    
     team_1_players_options = vals['team_1']['player-search-action-1']['selected_options']
 
     team_1_salaries = 0
@@ -158,9 +164,18 @@ def trade_review_result(payload, msg_map, metadata):
     for option in team_1_players_options:
         rostered = player_dict.get(option['value'], None)
         if not rostered:
+            print('not_rostered 1')
             return {
-                'statusCode': 400,
-                'body': json.dumps(f'Player not rostered in league {league_id}: {option["text"]["text"]}')
+                'statusCode': 200,
+                "headers": {
+                        'Content-Type': 'application/json',
+                    },
+                'body': json.dumps({
+                    'response_action': 'errors',
+                    'errors': {
+                        'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                    }
+                })
             }
         salary = rostered.get('Salary')
         team_1_salaries += int(salary.split('$')[1])
@@ -172,12 +187,21 @@ def trade_review_result(payload, msg_map, metadata):
     team_2_names = list()
     for option in team_2_players_options:
         rostered = player_dict.get(option['value'])
-        salary = rostered.get('Salary')
         if not rostered:
+            print('not_rostered 2')
             return {
-                'statusCode': 400,
-                'body': json.dumps(f'Player not rostered in league {league_id}: {option["text"]["text"]}')
+                'statusCode': 200,
+                "headers": {
+                        'Content-Type': 'application/json',
+                    },
+                'body': json.dumps({
+                    'response_action': 'errors',
+                    'errors': {
+                        'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                    }
+                })
             }
+        salary = rostered.get('Salary')
         team_2_salaries += int(salary.split('$')[1])
         team_2_names.append((option['value'], salary, option['text']['text'].split(', ')))
 
@@ -187,26 +211,39 @@ def trade_review_result(payload, msg_map, metadata):
     if partial_loan_amount and int(partial_loan_amount) < 0:
         team_1_more_salary = not team_1_more_salary
 
-    text_response += '\n'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_1_names)
+    text_response += '\n:one:  '
 
-    if team_1_more_salary and (loan_type == 'full-loan' or partial_loan_amount):
+    text_response += '\n\t\t'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_1_names)
+
+    if team_1_more_salary: 
         if loan_type == 'full-loan':
-            text_response += f'\nFull Loan (${salary_diff})'
+            text_response += f'\n\t\tFull Loan (${salary_diff})'
+        elif partial_loan_amount:
+            net_int = (salary_diff - abs(int(partial_loan_amount)))
+            if net_int < 0:
+                net = f'-${abs(net_int)}'
+            else:
+                net = f'${net_int}'
+            text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
         else:
-            text_response += f'\n${abs(int(partial_loan_amount))} Loan'
+            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
 
-    text_response += '\n:two:\n'
+    text_response += '\n:two:  '
     
-    text_response += '\n'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_2_names)
+    text_response += '\n\t\t'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_2_names)
 
-    if not team_1_more_salary and (loan_type == 'full_loan' or partial_loan_amount):
+    if not team_1_more_salary:
         if loan_type == 'full-loan':
-            text_response += f'\nFull Loan (${salary_diff})'
+            text_response += f'\n\t\tFull Loan (${salary_diff})'
+        elif partial_loan_amount:
+            net_int = (salary_diff - abs(int(partial_loan_amount)))
+            if net_int < 0:
+                net = f'-${abs(net_int)}'
+            else:
+                net = f'${net_int}'
+            text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
         else:
-            text_response += f'\n${abs(int(partial_loan_amount))} Loan'
-
-    if loan_type == 'no-loan':
-        text_response += '\nNo Loan'
+            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
 
     response_dict = {}
     response_dict['response_type'] = 'in_channel'
@@ -331,7 +368,7 @@ def get_modal():
         "callback_id": <callbackid>,
         "title": {
             "type": "plain_text",
-            "text": "Otto-bot Wizard",
+            "text": "Otto-bot",
             "emoji": true
         },
         "submit": {

@@ -9,6 +9,8 @@ client = boto3.client('lambda')
 
 def lambda_handler(event, context):
     
+    print(event)
+    
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
     
     print(event['requestContext'])
@@ -17,12 +19,13 @@ def lambda_handler(event, context):
     
     print(msg_map)
 
-    payload = msg_map.get('payload', None)
-    if payload:
+    payload_json = msg_map.get('payload', None)
+    if payload_json:
+        payload = json.loads(msg_map['payload'])
         search_value = payload.get('value', None)
         if search_value:
             search_parameters = {
-                "search_name" : msg_map['text'],
+                "search_name" : search_value,
                 "stage" : msg_map['stage']
             }
             
@@ -44,10 +47,15 @@ def lambda_handler(event, context):
                     name = f"{player_dict['name']}, {player_dict['positions']}, {player_dict['org']}"
                     value = int(player_dict['_id'])
 
-                    options.append({
-                        'label': name,
-                        'value': value
-                    })
+                    options.append(
+                        {
+                            'text': {
+                                'type': 'plain_text',
+                                'text': name
+                            },
+                            'value': str(value)
+                        }
+                    )
                 
                 response = {
                     'options': options
@@ -56,7 +64,10 @@ def lambda_handler(event, context):
 
                 return {
                     'statusCode': 200,
-                    'body': json.dumps(response)
+                    'body': json.dumps(response),
+                    "headers": {
+                        'Content-Type': 'application/json',
+                    }
                 }
 
 

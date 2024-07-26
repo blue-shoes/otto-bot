@@ -360,8 +360,24 @@ def lambda_handler(event, context):
         'body': json.dumps('Not a valid command')
     }
 
+def mongo_client_warm(msg_map):
+    search_parameters = {
+        "league_id" : '160'
+    }
+    
+    search_version = os.environ[f'{msg_map["stage"]}_search_version']
+    
+    _ = client.invoke(
+        FunctionName = os.environ['player_search_lambda_arn'],
+        InvocationType = 'RequestResponse',
+        Payload = json.dumps(search_parameters),
+        Qualifier = search_version
+    )
+
 def show_trade_window(msg_map):
     print('in show trade window')
+    #Warm MongoClient
+    mongo_client_warm(msg_map)
     view = create_view(msg_map, TRADE_TEMPLATE)
     update_res = update_view(msg_map, view)
     print(update_res)

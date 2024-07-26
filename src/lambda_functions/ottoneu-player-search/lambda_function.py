@@ -7,21 +7,38 @@ client = MongoClient(host=os.environ.get("ATLAS_URI"))
 ottoneu_db = client.ottoneu
 
 def lambda_handler(event, context):
-    try:
-        if "search_name" in event:
-            search_name = event['search_name']
-        else:
-            search_name = event["queryStringParameters"]["search_name"]
-    except KeyError:
-        return {
-            'statusCode': 400,
-            'body': json.dumps('Body does not have search_name parameter.')
-        }
-    if not search_name:
-        return {
-            'statusCode': 400,
-            'body': json.dumps('Empty string passed as search name')
-        }
+    if "search_name" in event:
+        search_name = event['search_name']
+    else:
+        search_name = event["queryStringParameters"].get("search_name", None)
+
+    if search_name:
+        return player_search(search_name)
+    
+    if "league_id" in event:
+        league_id = event['league_id']
+    else:
+        league_id = event["queryStringParameters"].get("league_id", None)
+    
+    if league_id:
+        return league_search(league_id)
+
+    return {
+        'statusCode': 400,
+        'body': json.dumps('Invalid search paramters')
+    }
+
+def league_search(league_id: str):
+    roster_cursor = ottoneu_db.leagues.find({'_id': league_id})
+    
+    player_dict = next(roster_cursor, None)
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps(player_dict)
+    }
+
+def player_search(search_name:str):
     search_name = unquote(search_name)
     search_name = normalize(search_name)
     search_name = f'.*{search_name}.*'
@@ -41,7 +58,7 @@ def lambda_handler(event, context):
     return {
         'statusCode': 200,
         'body': json.dumps(results)
-    }
+    }   
 
 normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'ª': 'A',

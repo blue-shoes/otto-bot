@@ -1,57 +1,68 @@
 import json
-import boto3
-from boto3.dynamodb.conditions import Key
 from urllib.parse import unquote
+import os
+from pymongo import MongoClient
+
+client = MongoClient(host=os.environ.get("ATLAS_URI"))
+ottoneu_db = client.ottoneu
 
 def lambda_handler(event, context):
-    try:
-        if "search_name" in event:
-            search_name = event['search_name']
-        else:
-            search_name = event["queryStringParameters"]["search_name"]
-    except KeyError:
-        return {
-            'statusCode': 400,
-            'body': json.dumps('Body does not have search_name parameter.')
-        }
-    if not search_name:
-        return {
-            'statusCode': 400,
-            'body': json.dumps('Empty string passed as search name')
-        }
+    if "search_name" in event:
+        search_name = event['search_name']
+    elif "queryStringParameters" in event:
+        search_name = event["queryStringParameters"].get("search_name", None)
+    else:
+        search_name = None
+
+    if search_name:
+        return player_search(search_name)
+    
+    if "league_id" in event:
+        league_id = event['league_id']
+    elif "queryStringParameters" in event:
+        league_id = event["queryStringParameters"].get("league_id", None)
+    else:
+        league_id = None
+    
+    if league_id:
+        return league_search(league_id)
+
+    return {
+        'statusCode': 400,
+        'body': json.dumps('Invalid search paramters')
+    }
+
+def league_search(league_id: str):
+    roster_cursor = ottoneu_db.leagues.find({'_id': league_id})
+    
+    player_dict = next(roster_cursor, None)['rosters']
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps(player_dict)
+    }
+
+def player_search(search_name:str):
     search_name = unquote(search_name)
     search_name = normalize(search_name)
-    search_name = clean_full_name(search_name)
+    search_name = f'.*{search_name}.*'
     
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('ottoneu-player-db')
-    
-    split = search_name.split()
-    if len(split) == 1:
-        index = 'search_last_name'
-    elif split[0] in ['DE', 'DEL', 'DI', 'VAN', 'LA', 'ST']:
-        index = 'search_last_name'
-    else:
-        index = 'search_name'
+    players_col = ottoneu_db.players
 
-    items = table.query(
-        IndexName=f"{index}-index",
-        KeyConditionExpression=Key(f"{index}").eq(search_name),
-    )
-
-    results = []
+    results_cursor = players_col.find({'search_name': {'$regex': search_name, '$options': 'i'}})
     
-    for item in items['Items']:
+    results = list()
+    for item in results_cursor:
         result = {}
         for key, val in item.items():
             result[key] = val
-        result['ottoneu_id'] = int(str(result['ottoneu_id']))
+        result['ottoneu_id'] = int(str(result['_id']))
         results.append(result)
     
     return {
         'statusCode': 200,
         'body': json.dumps(results)
-    }
+    }   
 
 normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'ª': 'A',
@@ -66,22 +77,6 @@ normalMap = {'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
              'Ñ': 'N', 'ñ': 'n',
              'Ç': 'C', 'ç': 'c',
              '§': 'S',  '³': '3', '²': '2', '¹': '1'}
-
-def clean_full_name(value:str) -> str:
-    cleaned = normalize(value)
-    cleaned = cleaned.replace('.', '')
-    cleaned = clear_if_ends_with(cleaned, ' JR')
-    cleaned = clear_if_ends_with(cleaned, ' SR')
-    cleaned = clear_if_ends_with(cleaned, ' II')
-    cleaned = clear_if_ends_with(cleaned, ' III')
-    cleaned = clear_if_ends_with(cleaned, ' IV')
-    cleaned = clear_if_ends_with(cleaned, ' V')
-    return cleaned
-
-def clear_if_ends_with(val:str, check:str) -> str:
-    if val.endswith(check):
-        return val[:-len(check)].strip()
-    return val
 
 def normalize(value:str) -> str:
     """Function that removes most diacritics from strings and returns value in all caps"""

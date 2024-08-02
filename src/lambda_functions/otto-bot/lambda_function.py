@@ -5,16 +5,17 @@ import base64
 import boto3
 import requests
 import os
+import time
 
-client = boto3.client('lambda')
+lambda_client = boto3.client('lambda')
 sqs = boto3.client('sqs')
-valid_commands = ['/link-player']
-loading_commands = ['/link-player']
+
+valid_commands = ['/link-player', '/trade-review']
+loading_commands = ['/link-player', '/trade-review']
 
 def lambda_handler(event, context):
     
     msg_map = dict(urlparse.parse_qsl(base64.b64decode(str(event['body'])).decode('ascii')))
-    
     
     print(event['requestContext'])
     
@@ -31,61 +32,19 @@ def lambda_handler(event, context):
         elif payload['type'] == 'view_submission':
             metadata = payload['view']['private_metadata'].split(',') 
             command = metadata[0]
-            if command == '/link-player':
-                vals = payload['view']['state']['values']
-                selected_player = vals['player_block']['player_selection_action']['selected_option']
-                player_text = selected_player['text']['text']
-                name_split = player_text.split(',')
-                ids = selected_player['value'].split(',')
-                
-                link_types = [sel['value'] for sel in vals['link_block']['checkboxes-action']['selected_options']]
-
-                if not link_types:
-                    print(msg_map['payload'])
-                    return {
-                              "response_action": "errors",
-                              "errors": {
-                                    "link_block": "You may not select a due date in the past"
-                               }
-                            }
-
-                if 'ottoneu' in link_types:
-
-                    selected_format = vals['format_block']['format_select_action']['selected_option']['value']
-    
-                    otto_player_link = f'https://ottoneu.fangraphs.com/playercard/{ids[0]}/{selected_format}'
-        
-                    text_response = f'<{otto_player_link}|{name_split[0]}> {", ".join(name_split[1:])}'
-                    
-                    if 'fg' in link_types:
-                        fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
-                        text_response += f' (<{fg_link}|FG>)'
-                
-                elif 'fg' in link_types:
-                    fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
-                    text_response = f'<{fg_link}|{name_split[0]}> {", ".join(name_split[1:])}'
-                
-                else:
-                    return {
-                        'statusCode': 400,
-                        'body': json.dumps(f'Invalid link type(s) "{link_types}" selected".')
-                    }
-
-                response_dict = {}
-                response_dict['response_type'] = 'in_channel'
-                response_dict['text'] = text_response
-                
-                header = {'Content-Type': 'application/json'}
-                response = requests.post(metadata[1], headers=header, data=json.dumps(response_dict))
-
-                return {
-                    'statusCode': 200
-                }
+            if command.startswith('/link-player'):
+                return link_player_result(payload, msg_map, metadata)
+            if command.startswith('/trade-review'):
+                return trade_review_result(payload, msg_map, metadata)
+            return {
+                'statusCode': 400,
+                'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}')
+            }
     
     valid_command = False
     input_command = msg_map.get('command', None)
     for command in valid_commands:
-        if input_command and command.startswith(command):
+        if input_command and input_command.startswith(command):
             valid_command = True
             break
     
@@ -97,8 +56,14 @@ def lambda_handler(event, context):
             'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}')
         }
     
+    #if not msg_map.get('text', None):
+    #    return {
+    #        'statusCode': 400, 
+    #        'body': json.dumps(f'No arguments given for slash command: {msg_map['command']}')
+    #    }
+    
     for command in loading_commands:
-        if input_command and command.startswith(command):
+        if input_command and input_command.startswith(command):
             modal_res = initiate_loading_modal(msg_map)
             print(modal_res)
             if modal_res['ok']:
@@ -107,7 +72,7 @@ def lambda_handler(event, context):
                 print(modal_res)
                 return {
                 'statusCode': 400, 
-                'body': json.dumps(f'Error creating interactive dialog')
+                'body': json.dumps('Error creating interactive dialog')
             }
     
     queueurl = sqs.get_queue_url(QueueName='Otto-bot-queue')['QueueUrl']
@@ -116,11 +81,269 @@ def lambda_handler(event, context):
     except:
         return {
             'statusCode': 400, 
-            'body': json.dumps(f'Error when submitting to the queue.')
+            'body': json.dumps('Error when submitting to the queue.')
         }
     
     return {
         'statusCode': 202
+    }
+
+def trade_review_result(payload, msg_map, metadata):
+    vals = payload['view']['state']['values']
+    
+    selected_format = vals['format_block']['format_select_action']['selected_option']['value']
+    
+    league_id = vals['league_number']['plain_text_input-action']['value']
+    
+    search_parameters = {
+        "league_id" : league_id
+    }
+    
+    search_version = os.environ[f'{msg_map["stage"]}_league_load_version']
+    
+    response = lambda_client.invoke(
+        FunctionName = os.environ['league_load_lambda_arn'],
+        InvocationType = 'RequestResponse',
+        Payload = json.dumps(search_parameters),
+        Qualifier = search_version
+    )
+    
+    lambda_response = json.load(response['Payload'])
+    
+    if 'body' in lambda_response:
+        player_dict = json.loads(lambda_response['body'])
+    else:
+        player_dict = None
+
+    if not player_dict:
+        return {
+            'statusCode': 200,
+            "headers": {
+                    'Content-Type': 'application/json',
+                },
+            'body': json.dumps({
+                'response_action': 'errors',
+                'errors': {
+                    'league_number': f'League Id {league_id} not available in database.'
+                }
+            })
+        }
+
+    loan_type = vals['loan_type']['checkboxes-action']['selected_option']['value']
+    if loan_type == 'partial-loan':
+        try:
+            partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
+            int_check = int(partial_loan_amount)
+        except ValueError:
+            partial_loan_amount = None
+    else:
+        partial_loan_amount = None
+    
+    if selected_format == '1':
+        text_response = 'Scoring: 4x4'
+    elif selected_format == '2':
+        text_response = 'Scoring: 5x5'
+    elif selected_format == '3':
+        text_response = 'Scoring: FGP'
+    elif selected_format == '4':
+        text_response = 'Scoring: SABR'
+    elif selected_format == '5':
+        text_response = 'Scoring: FGP H2H'
+    elif selected_format == '6':
+        text_response = 'Scoring: SABR H2H'
+    else:
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'Invalid format {selected_format}.')
+        }
+    
+    team_1_players_options = vals['team_1']['player-search-action-1']['selected_options']
+
+    team_1_salaries = 0
+    team_1_names = list()
+    for option in team_1_players_options:
+        rostered = player_dict.get(option['value'], None)
+        if not rostered:
+            print('not_rostered 1')
+            return {
+                'statusCode': 200,
+                "headers": {
+                        'Content-Type': 'application/json',
+                    },
+                'body': json.dumps({
+                    'response_action': 'errors',
+                    'errors': {
+                        'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                    }
+                })
+            }
+        salary = rostered.get('Salary')
+        team_1_salaries += int(salary.split('$')[1])
+        team_1_names.append((option['value'], salary, option['text']['text'].split(', ')))
+
+    team_2_players_options = vals['team_2']['player-search-action-2']['selected_options']
+
+    team_2_salaries = 0
+    team_2_names = list()
+    for option in team_2_players_options:
+        rostered = player_dict.get(option['value'])
+        if not rostered:
+            print('not_rostered 2')
+            return {
+                'statusCode': 200,
+                "headers": {
+                        'Content-Type': 'application/json',
+                    },
+                'body': json.dumps({
+                    'response_action': 'errors',
+                    'errors': {
+                        'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                    }
+                })
+            }
+        salary = rostered.get('Salary')
+        team_2_salaries += int(salary.split('$')[1])
+        team_2_names.append((option['value'], salary, option['text']['text'].split(', ')))
+
+    team_1_more_salary = team_1_salaries > team_2_salaries
+    salary_diff = abs(team_1_salaries - team_2_salaries)
+    
+    if partial_loan_amount and int(partial_loan_amount) < 0:
+        team_1_more_salary = not team_1_more_salary
+
+    text_response += '\n:one:  '
+
+    text_response += '\n\t\t'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_1_names)
+
+    if team_1_more_salary: 
+        if loan_type == 'full-loan':
+            text_response += f'\n\t\tFull Loan (${salary_diff})'
+        elif partial_loan_amount:
+            net_int = (salary_diff - abs(int(partial_loan_amount)))
+            if net_int < 0:
+                net = f'-${abs(net_int)}'
+            else:
+                net = f'${net_int}'
+            text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
+        else:
+            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
+
+    text_response += '\n:two:  '
+    
+    text_response += '\n\t\t'.join(f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{selected_format}|{option[2][0]}> {", ".join(option[2][1:])}' for option in team_2_names)
+
+    if not team_1_more_salary:
+        if loan_type == 'full-loan':
+            text_response += f'\n\t\tFull Loan (${salary_diff})'
+        elif partial_loan_amount:
+            net_int = (salary_diff - abs(int(partial_loan_amount)))
+            if net_int < 0:
+                net = f'-${abs(net_int)}'
+            else:
+                net = f'${net_int}'
+            text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
+        else:
+            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
+
+    response_dict = {}
+    response_dict['response_type'] = 'in_channel'
+    response_dict['text'] = text_response
+    response_dict['channel'] = metadata[2]
+    response_dict['token']  = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    response_dict['unfurl_links'] = False
+    
+    header = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    response = requests.post('https://slack.com/api/chat.postMessage', headers=header, data=urllib.parse.urlencode(response_dict))
+    
+    print(response.content)
+    
+    ts = json.loads(response.content.decode('utf-8'))['ts']
+    
+    react_dict = dict()
+    react_dict['channel'] = metadata[2]
+    react_dict['token']  = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    react_dict['timestamp'] = ts
+    
+    react_dict['name'] = 'one'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    time.sleep(0.2)
+    
+    react_dict['name'] = 'two'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    time.sleep(0.2)
+    
+    react_dict['name'] = 'scales'
+    response = requests.post('https://slack.com/api/reactions.add', headers=header, data=urllib.parse.urlencode(react_dict))
+    
+    print(response.content)
+    
+    return {
+        'statusCode': 200
+    }
+
+def link_player_result(payload, msg_map, metadata):
+    vals = payload['view']['state']['values']
+    selected_player = vals['player_block']['player_selection_action']['selected_option']
+    player_text = selected_player['text']['text']
+    name_split = player_text.split(',')
+    ids = selected_player['value'].split(',')
+    link_types = [sel['value'] for sel in vals['link_block']['checkboxes-action']['selected_options']]
+
+    if not link_types:
+        print(msg_map['payload'])
+        return {
+                    "response_action": "errors",
+                    "errors": {
+                        "link_block": "Must select at least one linkage"
+                    }
+                }
+
+    if 'ottoneu' in link_types:
+
+        selected_format = vals['format_block']['format_select_action']['selected_option']['value']
+
+        otto_player_link = f'https://ottoneu.fangraphs.com/playercard/{ids[0]}/{selected_format}'
+
+        text_response = f'<{otto_player_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+        
+        if 'fg' in link_types:
+            fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
+            text_response += f' (<{fg_link}|FG>)'
+        
+        if 'sc' in link_types:
+            sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+            text_response += f' (<{sc_link}|SC>)'
+    
+    elif 'fg' in link_types:
+        fg_link = f'http://www.fangraphs.com/statss.aspx?playerid={ids[1]}'
+        text_response = f'<{fg_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+        
+        if 'sc' in link_types:
+            sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+            text_response += f' (<{sc_link}|SC>)'
+    
+    elif 'sc' in link_types:
+        sc_link = f'https://baseballsavant.mlb.com/savant-player/{ids[2]}'
+        text_response = f'<{sc_link}|{name_split[0]}> {", ".join(name_split[1:])}'
+    
+    else:
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'Invalid link type(s) "{link_types}" selected".')
+        }
+
+    response_dict = {}
+    response_dict['response_type'] = 'in_channel'
+    response_dict['text'] = text_response
+    
+    header = {'Content-Type': 'application/json'}
+    response = requests.post(metadata[1], headers=header, data=json.dumps(response_dict))
+
+    return {
+        'statusCode': 200
     }
 
 def initiate_loading_modal(msg_map):
@@ -145,7 +368,7 @@ def get_modal():
         "callback_id": <callbackid>,
         "title": {
             "type": "plain_text",
-            "text": "Otto-bot Wizard",
+            "text": "Otto-bot",
             "emoji": true
         },
         "submit": {
@@ -163,7 +386,7 @@ def get_modal():
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": "Loading players..."
+                    "text": "Loading..."
                 }
             }
         ]

@@ -9,16 +9,20 @@ ottoneu_db = client.ottoneu
 def lambda_handler(event, context):
     if "search_name" in event:
         search_name = event['search_name']
-    else:
+    elif "queryStringParameters" in event:
         search_name = event["queryStringParameters"].get("search_name", None)
+    else:
+        search_name = None
 
     if search_name:
         return player_search(search_name)
     
     if "league_id" in event:
         league_id = event['league_id']
-    else:
+    elif "queryStringParameters" in event:
         league_id = event["queryStringParameters"].get("league_id", None)
+    else:
+        league_id = None
     
     if league_id:
         return league_search(league_id)
@@ -31,7 +35,7 @@ def lambda_handler(event, context):
 def league_search(league_id: str):
     roster_cursor = ottoneu_db.leagues.find({'_id': league_id})
     
-    player_dict = next(roster_cursor, None)
+    player_dict = next(roster_cursor, None)['rosters']
 
     return {
         'statusCode': 200,

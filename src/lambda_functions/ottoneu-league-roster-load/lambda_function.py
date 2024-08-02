@@ -27,8 +27,12 @@ def lambda_handler(event, context):
     
     rost_soup = Soup(response.text, 'html.parser')
     df = pd.read_csv(StringIO(rost_soup.contents[0]))
+    df = df[df['Salary'].notna()]
+    df = df[['ottoneu ID', 'TeamID', 'Team Name', 'Salary']]
     df.set_index("ottoneu ID", inplace=True)
     df.index = df.index.astype(str, copy = False)
+    print(df.head())
+
     roster_dict = df.to_dict('index')
 
     return {

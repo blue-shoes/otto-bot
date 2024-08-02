@@ -6,6 +6,7 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup as Soup
 from io import StringIO
+import datetime
 
 client = MongoClient(host=os.environ.get("ATLAS_URI"))
 ottoneu_db = client.ottoneu
@@ -13,38 +14,38 @@ ottoneu_db = client.ottoneu
 lambda_client = boto3.client('lambda')
 
 def lambda_handler(event, context):
-    # TODO implement
-
     print(event)
     
     if event.get('Records', None):
-        msg_map = json.loads(event['Records'][0]['body'])
+        msg_map = list()
+        for record in event['Records']:
+            msg_map.append(json.loads(record['body']))
     else:
-        msg_map = event
+        msg_map = [event]
     
     print(msg_map)
     
-    if not msg_map.get('league_ids', None):
+    if not msg_map or not msg_map[0].get('league_ids', None):
         return {
             'statusCode': 400,
             'body': json.dumps('league_ids not present in event')
         }
-    league_ids = msg_map['league_ids']
+    league_ids = [li for lis in msg_map for li in lis['league_ids']]
     
     leagues_col = ottoneu_db.leagues
 
     update_leagues = list()
 
-    print(f'All leagues: {league_ids.length}')
-
-    #league_ids = ['1', '3', '13', '15', '16', '26', '28', '32']
 
     print(f'League subset: {len(league_ids)}')
 
     for league_id in league_ids:
         #print(f'Getting league_id: {league_id}' )
         try:
-            league_dict = get_league_dict(league_id)
+            league_dict = dict()
+            league_dict['rosters'] = get_league_dict(league_id)
+            
+            league_dict['Last Updated'] = datetime.datetime.now()
                 
             if not league_dict:
                 print(f'!!League_id {league_id} not valid')
@@ -79,6 +80,8 @@ def get_league_dict(lg_id: str):
         
         rost_soup = Soup(response.text, 'html.parser')
         df = pd.read_csv(StringIO(rost_soup.contents[0]))
+        df = df[df['Salary'].notna()]
+        df = df[['ottoneu ID', 'TeamID', 'Team Name', 'Salary']]
         df.set_index("ottoneu ID", inplace=True)
         df.index = df.index.astype(str, copy = False)
         return df.to_dict('index')

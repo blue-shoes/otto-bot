@@ -26,7 +26,8 @@ def lambda_handler(event, context):
 
     roster_cursor = ottoneu_db.leagues.find({'_id': league_id})
     
-    player_dict = next(roster_cursor, None)
+    player_dict = next(roster_cursor, None)['rosters']
+    print(player_dict)
 
     return {
         'statusCode': 200,

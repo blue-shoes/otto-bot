@@ -194,7 +194,7 @@ VIEW_TEMPLATE = """
         "private_metadata": <metadata>,
         "title": {
             "type": "plain_text",
-            "text": "Otto-bot Wizard",
+            "text": "<title>",
             "emoji": true
         },
         "submit": {
@@ -378,7 +378,7 @@ def show_trade_window(msg_map):
     print('in show trade window')
     #Warm MongoClient
     mongo_client_warm(msg_map)
-    view = create_view(msg_map, TRADE_TEMPLATE)
+    view = create_view(msg_map, TRADE_TEMPLATE, 'Trade Review Wizard')
     update_res = update_view(msg_map, view)
     print(update_res)
         
@@ -414,7 +414,7 @@ def show_player(msg_map):
     else:
         blocks = get_empty_player_list_blocks(msg_map['text']) 
     
-    view = create_view(msg_map, blocks)
+    view = create_view(msg_map, blocks, 'Player Search Wizard')
     update_res = update_view(msg_map, view)
     print('sending 200')
     return {
@@ -434,11 +434,12 @@ def update_view(msg_map, view):
     res = urllib.request.urlopen(request).read().decode('utf-8')
     return res
 
-def create_view(msg_map, blocks):
+def create_view(msg_map, blocks, title):
     view = VIEW_TEMPLATE
     view = view.replace('<callbackid>', '"' + msg_map['trigger_id'] + '"')
     view = view.replace('<metadata>', '"' + msg_map['command'] +"," + msg_map['response_url'] + ',' + msg_map['channel_id']+ ',' + msg_map['team_id']+'"')
     view = view.replace('<blocks>', blocks)
+    view = view.replace('<title>', title)
     return view
 
 def get_empty_player_list_blocks(name):

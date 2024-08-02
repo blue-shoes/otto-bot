@@ -1,6 +1,7 @@
 import json
 import boto3
 import os
+import math
 
 sqs = boto3.client('sqs')
 lambda_client = boto3.client('lambda')
@@ -14,7 +15,11 @@ def lambda_handler(event, context):
     
     league_ids = json.loads(league_id_str)
     
-    league_id_chunks = divide_lists(league_ids, int(os.environ['list_chunk_size']))
+    print(f'Total Number of Leagues: {len(league_ids)}')
+    
+    chunk_size = math.ceil(float(len(league_ids) / float(os.environ['number_of_chunks'])))
+    
+    league_id_chunks = divide_lists(league_ids, chunk_size)
     
     for id_chunk in league_id_chunks:
         print(f'length = {len(id_chunk)}')

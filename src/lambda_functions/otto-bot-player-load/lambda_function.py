@@ -44,7 +44,7 @@ def lambda_handler(event, context):
                 player_list = json.loads(lambda_response['body'])
                 options = list()
                 for player_dict in player_list:
-                    name = f"{player_dict['name']}, {player_dict['positions']}, {player_dict['org']}"
+                    name = f"{', '.join([player_dict['name'], player_dict['positions'], player_dict.get('org', 'FA')])}"
                     value = int(player_dict['_id'])
 
                     options.append(
@@ -61,7 +61,7 @@ def lambda_handler(event, context):
                     'options': options
                 }
 
-
+                print(json.dumps(response))
                 return {
                     'statusCode': 200,
                     'body': json.dumps(response),

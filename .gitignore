@@ -1,2 +1,4 @@
 /.vscode
 /__pycache__
+src/lambda_functions/*/dependencies
+src/lambda_functions/*/*.zip

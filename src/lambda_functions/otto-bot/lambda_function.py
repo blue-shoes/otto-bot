@@ -133,9 +133,22 @@ def trade_review_result(payload, msg_map, metadata):
     if loan_type == 'partial-loan':
         try:
             partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
-            int_check = int(partial_loan_amount)
+            if partial_loan_amount[0] == '$':
+                partial_loan_amount = partial_loan_amount[1:]
+            _ = int(partial_loan_amount)
         except ValueError:
-            partial_loan_amount = None
+            return {
+                'statusCode': 200,
+                "headers": {
+                        'Content-Type': 'application/json',
+                    },
+                'body': json.dumps({
+                    'response_action': 'errors',
+                    'errors': {
+                        'partial_loan': 'Enter custom loan as only number of dollars (e.g. \"10\")'
+                    }
+                })
+            }
     else:
         partial_loan_amount = None
     

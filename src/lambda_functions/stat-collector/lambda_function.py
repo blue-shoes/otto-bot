@@ -232,7 +232,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     players_col = ottoneu_db.players
     result = players_col.find_one({'mlbam_id': int(mlbam_id)})
     if result and 'fg_majorleagueid' in result:
-        return result['fg_majorleagueid']
+        return int(result['fg_majorleagueid'])
     
     # Need to match names to get FG Major League Id. Possibly populate db with MLBAM
     unmatched = [id for id in fg_box.index if id not in id_map['key_fangraphs']]
@@ -282,9 +282,10 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     # Matched on name and batting order position and couldn't eliminate by statline. Not sure what else we can do at this point. Seems very rare.
     return -1
         
-def add_mlbam_id_to_db(mlbam_id:int, fg_id:str) -> str:
-    ottoneu_db.players.update_one({'fg_majorleagueid':fg_id}, { '$set': {'mlbam_id': mlbam_id.item()}})
-    return fg_id
+def add_mlbam_id_to_db(mlbam_id:int, fg_id:int|str) -> str:
+    print(f'adding {mlbam_id.item()} mlbam to {fg_id}')
+    ottoneu_db.players.update_one({'fg_majorleagueid':str(fg_id)}, { '$set': {'mlbam_id': mlbam_id.item()}})
+    return int(fg_id)
 
 def find_double_headers(df:DataFrame, game_date:str) -> dict[int, tuple[bool, DataFrame, DataFrame]]:
     '''Returns dict with game_pk key and value of tuple(first game of dh bool, batting df for first game, pitching df for first game)'''

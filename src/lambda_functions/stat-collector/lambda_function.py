@@ -151,15 +151,16 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                             continue
                         stat_dict[cat] = batter_data.loc[pid][cat] - dh_tuple[1].loc[fg_id][cat]
                     b_series = Series(stat_dict)
-                b_series['H_Points'] = hitting_points(b_series)
+                points = hitting_points(b_series)
             else:
                 b_series = batter_data.loc[pid]
+                points = b_series['H_Points']
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid}
+            insert['metadata'] = {'mlbam_id': pid, 'name': batter_data.loc[pid]['Name']}
             insert['timestamp'] = insert_date
             insert['PA'] = b_series['PA']
-            insert['H_Points'] = b_series['H_Points']
+            insert['H_Points'] = points
             insert['GS'] = pid in starters
             insert['BO'] = batting_order_and_finishers[pid][0]
             insert['GF'] = batting_order_and_finishers[pid][1]
@@ -202,11 +203,14 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                 insert['SV'] = True
             if pid in hold_data and game_pk in hold_data[pid]:
                 insert['HLD'] = True
-                p_series['P_Points'] = p_series['P_Points'] + 4.0
-                p_series['SABR_Points'] = p_series['SABR_Points'] + 4.0
+                p_points = p_series['P_Points'] + 4.0
+                s_points = p_series['SABR_Points'] + 4.0
+            else:
+                p_points = p_series['P_Points']
+                s_points =  p_series['SABR_Points'] + 4.0
             insert['P_xwOBA'] = p_xwoba[pid]
-            insert['P_Points'] = p_series['P_Points']
-            insert['SABR_Points'] = p_series['SABR_Points']
+            insert['P_Points'] = p_points
+            insert['SABR_Points'] = s_points
 
             inserts.append(insert)
     return inserts

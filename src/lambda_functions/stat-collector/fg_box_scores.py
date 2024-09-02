@@ -9,7 +9,6 @@ from typing import List, Dict
 
 def get_game_urls(date:str) -> List[str]:
     url = f'https://www.fangraphs.com/scoreboard.aspx?date={date}'
-    print(f'url = {url}')
     response = requests.get(url)
     if response.status_code == 500:
         #No games for date
@@ -35,21 +34,25 @@ def parse_pitcher_box(soup:BeautifulSoup) -> DataFrame:
 
     p_df = pd.concat([h_df, v_df])
     p_df.rename(columns={'TBF':'BF'})
+    p_df.index = p_df.index.astype('int')
 
-    return 
+    return p_df
 
 def parse_batter_box(soup:BeautifulSoup) -> tuple[DataFrame, tuple[int, int]]:
     h_df = get_box_df(soup, 'WinsBox1_dg2hb')
-    h_bo = get_bo_df(soup, 'WinsBox1_dghb_ctl00')
-    h_df = pd.concat([h_df, h_bo])
+    h_bo = get_bo_df(soup, 'WinsBox1_dghb')
+    h_df = h_df.merge(h_bo, left_index=True, right_index=True)
     h_runs = h_df['R'].sum()
 
     v_df = get_box_df(soup, 'WinsBox1_dg2ab')
-    v_bo = get_bo_df(soup, 'WinsBox1_dgab_ctl00')
-    v_df = pd.concat([v_df, v_bo])
+    v_bo = get_bo_df(soup, 'WinsBox1_dgab')
+    v_df = v_df.merge(v_bo, left_index=True, right_index=True)
     v_runs = v_df['R'].sum()
 
-    return pd.concat([h_df, v_df]), (v_runs, h_runs)
+    df = pd.concat([h_df, v_df])
+    df.index = df.index.astype('int')
+
+    return df, (v_runs, h_runs)
 
 def parse_final_score(soup:BeautifulSoup) -> tuple[int, int]:
     away = int(soup.find('tr', {'class': 'team away'}).find('td', {'class': 'runs'}).contents[0].strip())
@@ -92,8 +95,8 @@ def get_bo_df(soup:BeautifulSoup, div_id:str) -> Dict[str, int]:
             fg_url = link.get('href')
             fg_id = get_fg_id_from_url(fg_url)
             bo = tds[1].text
-            results.append(fg_id)
-            results.append(int(bo))
+            results.append([fg_id, int(bo)])
+            #results.append(int(bo))
     df = DataFrame(results)
     df.columns = ['fg_id', 'BO']
     df.set_index('fg_id', inplace=True)
@@ -104,18 +107,3 @@ def get_fg_id_from_url(url:str) -> str:
         return re.findall('.*playerid=(\\d+).*', url)[0]
     except IndexError:
         return '0'
-
-def main():
-    url = 'https://www.fangraphs.com/boxscore.aspx?date=2024-08-07&team=Guardians&dh=1&season=2024'
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    b_box, score = parse_batter_box(soup)
-    p_box = parse_pitcher_box(soup)
-
-    print(b_box.head())
-    print(p_box.head())
-
-    print(score)
-
-if __name__ == '__main__':
-    main()

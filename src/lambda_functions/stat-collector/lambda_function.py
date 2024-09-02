@@ -44,23 +44,13 @@ def lambda_handler(event, context):
     return save_days_stats(game_date_str)
 
 def save_days_stats(game_date_str:str):
-    game_date = datetime.datetime.strptime(game_date_str, '%Y-%m-%d')
+    sc_data, batter_data, pitcher_data = load_day_stats(game_date_str)
 
-    sc_data = statcast_processing.get_statcast_dataframe(game_date_str)
-    
-    pitcher_data = pitching_stats_range(game_date_str)
-    pitcher_data = pitcher_data.fillna(0)
-    pitcher_data.set_index('mlbID', inplace=True)
-    pitcher_data['P_Points'] = pitcher_data.apply(pitching_points, axis=1)
-    pitcher_data['SABR_Points'] = pitcher_data.apply(sabr_points, axis=1)
+    inserts = process_data(game_date_str, sc_data, batter_data, pitcher_data)
 
-    batter_data = batting_stats_range(game_date_str)
-    batter_data = batter_data.fillna(0)
-    batter_data.set_index('mlbID', inplace=True)
-    batter_data['H_Points'] = batter_data.apply(hitting_points, axis=1)
+    return insert_day_stats(inserts, game_date_str)
 
-    inserts = process_data(game_date, sc_data, batter_data, pitcher_data)
-
+def insert_day_stats(inserts:dict, game_date_str:str) -> dict:
     if not inserts:
         print(f'No games to upload for {game_date_str}')
         return {
@@ -83,10 +73,30 @@ def save_days_stats(game_date_str:str):
         'statusCode': 200
     }
 
-def process_data(game_date:str, sc_data:DataFrame, batter_data:DataFrame, pitcher_data:DataFrame) -> list[dict]:
+def load_day_stats(game_date_str:str) -> tuple[DataFrame, DataFrame, DataFrame]:
+    sc_data = statcast_processing.get_statcast_dataframe(game_date_str)
+
+    pitcher_data = pitching_stats_range(game_date_str)
+    pitcher_data = pitcher_data.fillna(0)
+    pitcher_data.set_index('mlbID', inplace=True)
+    pitcher_data.index = pitcher_data.index.astype('int')
+    pitcher_data['P_Points'] = pitcher_data.apply(pitching_points, axis=1)
+    pitcher_data['SABR_Points'] = pitcher_data.apply(sabr_points, axis=1)
+
+    batter_data = batting_stats_range(game_date_str)
+    batter_data = batter_data.fillna(0)
+    batter_data.set_index('mlbID', inplace=True)
+    batter_data.index = batter_data.index.astype('int')
+    batter_data['H_Points'] = batter_data.apply(hitting_points, axis=1)
+
+    return sc_data, batter_data, pitcher_data
+
+def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pitcher_data:DataFrame) -> list[dict]:
+    game_date = datetime.datetime.strptime(game_date_str, '%Y-%m-%d')
+
     game_pks = sc_data['game_pk'].unique()
 
-    double_headers = find_double_headers(sc_data, game_date)
+    double_headers = find_double_headers(sc_data, game_date_str)
     hold_data = statcast_processing.get_holds(sc_data, pitcher_data)
 
     inserts = list()
@@ -108,10 +118,12 @@ def process_data(game_date:str, sc_data:DataFrame, batter_data:DataFrame, pitche
             ids.extend([int(id) for id in p_xwoba.keys()])
             id_map = playerid_reverse_lookup(ids)
             id_map.set_index('key_mlbam', inplace=True)
+            id_map.index = id_map.index.astype('int')
+            id_map['key_fangraphs'] = id_map['key_fangraphs'].astype('int')
             if double_headers[game_pk][0]:
-                insert_date = game_date + timedelta(hours=1) 
-            else:
                 insert_date = game_date
+            else:
+                insert_date = game_date + timedelta(hours=1) 
         else:
             insert_date = game_date
 
@@ -123,24 +135,28 @@ def process_data(game_date:str, sc_data:DataFrame, batter_data:DataFrame, pitche
                 sp_hand = home_batter_sp_hand
             if batter_data.loc[pid]['G'] > 1:
                 dh_tuple = double_headers[game_pk]
-                fg_id = get_fg_id(id_map, dh_tuple[1], batter_data.loc[pid], batting_order_and_finishers[pid][0])
+                fg_id = get_fg_id(pid, id_map, dh_tuple[1], batter_data.loc[pid], batting_order_and_finishers[pid][0])
                 if fg_id == -1:
                     # No positive match
                     # TODO: Notify somehow?
                     continue
                 if dh_tuple[0]:
-                    b_series = dh_tuple[1][fg_id]
+                    b_series = dh_tuple[1].loc[fg_id]
                 else:
                     stat_dict = dict()
-                    for cat in dh_tuple[1][fg_id].columns:
-                        stat_dict[cat] = batter_data.loc[pid][cat] - dh_tuple[1][fg_id][cat]
+                    for cat in dh_tuple[1].columns:
+                        if isinstance(dh_tuple[1].loc[fg_id][cat], str):
+                            continue
+                        if cat not in batter_data.columns:
+                            continue
+                        stat_dict[cat] = batter_data.loc[pid][cat] - dh_tuple[1].loc[fg_id][cat]
                     b_series = Series(stat_dict)
-                b_series.apply(hitting_points, axis=1)
+                b_series['H_Points'] = hitting_points(b_series)
             else:
                 b_series = batter_data.loc[pid]
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid}
+            insert['metadata'] = {'mlbam_id': pid, 'name': batter_data.loc[pid]['Name']}
             insert['timestamp'] = insert_date
             insert['PA'] = b_series['PA']
             insert['H_Points'] = b_series['H_Points']
@@ -155,25 +171,29 @@ def process_data(game_date:str, sc_data:DataFrame, batter_data:DataFrame, pitche
         for pid in game_df['pitcher'].unique():
             if pitcher_data.loc[pid]['G'] > 1:
                 dh_tuple = double_headers[game_pk]
-                fg_id = get_fg_id(id_map, dh_tuple[1], pitcher_data.loc[pid], None)
+                fg_id = get_fg_id(pid, id_map, dh_tuple[2], pitcher_data.loc[pid], None)
                 if fg_id == -1:
                     # No positive match
                     # TODO: Notify somehow?
                     continue
                 if dh_tuple[0]:
-                    p_series = dh_tuple[2][fg_id]
+                    p_series = dh_tuple[2].loc[fg_id]
                 else:
                     stat_dict = dict()
-                    for cat in dh_tuple[2][fg_id].columns:
-                        stat_dict[cat] = pitcher_data.loc[pid][cat] - dh_tuple[2][fg_id][cat]
+                    for cat in dh_tuple[2].columns:
+                        if isinstance(dh_tuple[2].loc[fg_id][cat], str):
+                            continue
+                        if cat not in pitcher_data.columns:
+                            continue
+                        stat_dict[cat] = pitcher_data.loc[pid][cat] - dh_tuple[2].loc[fg_id][cat]
                     p_series = Series(stat_dict)
-                p_series['P_Points'] = p_series.apply(pitching_points, axis=1)
-                p_series['SABR_Points'] = p_series.apply(sabr_points, axis=1)
+                p_series['P_Points'] = pitching_points(p_series)
+                p_series['SABR_Points'] = sabr_points(p_series)
             else:
                 p_series = pitcher_data.loc[pid]
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid}
+            insert['metadata'] = {'mlbam_id': pid, 'name': pitcher_data.loc[pid]['Name']}
             insert['timestamp'] = insert_date
             insert['BF'] = p_series['BF']
             insert['GS'] = p_series['GS']
@@ -203,7 +223,7 @@ def sabr_points(row:Series) -> float:
     return 5.0*ip+2.0*row['SO']-3.0*row['BB']-3.0*row['HBP']-13.0*row['HR']+5.0*row['SV']
 
 def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Series, batting_order: Optional[int]) -> int:
-    row = id_map[int(mlbam_id)]
+    row = id_map.loc[mlbam_id.item()]
     # Fangraphs Id available from chadwick register (>99% use case)
     if row['key_fangraphs'] > 0:
         return row['key_fangraphs']
@@ -218,7 +238,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     unmatched = [id for id in fg_box.index if id not in id_map['key_fangraphs']]
     poss = list()
     for fg_id in unmatched:
-        fg_row = fg_box[fg_id]
+        fg_row = fg_box.loc[fg_id]
         if const.normalize(row['name_last']) in const.normalize(fg_row['Name']):
             poss.append(fg_id)
     if not fg_id:
@@ -228,7 +248,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     # Had multiple unmatched last name matches
     first_name = list()
     for fg_id in poss:
-        fg_row = fg_box[fg_id]
+        fg_row = fg_box.loc[fg_id]
         if const.normalize(row['name_first']) in const.normalize(fg_row['Name']):
             first_name.append(fg_id)
     if len(first_name) == 1:
@@ -239,7 +259,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     if batting_order:
         bo_match = list()
         for fg_id in poss:
-            fg_row = fg_box[fg_id]
+            fg_row = fg_box.loc[fg_id]
             if fg_row['BO'] == batting_order:
                 bo_match.append(fg_id)
         if len(bo_match) == 1:
@@ -252,7 +272,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
             if cat == 'AVG' or cat == 'ERA':
                 continue
             if cat in day_line:
-                if float(fg_box[cat]) > day_line[cat]:
+                if float(fg_box.loc[fg_id][cat]) > day_line[cat]:
                     possible = False
                     break
         if possible:
@@ -263,7 +283,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     return -1
         
 def add_mlbam_id_to_db(mlbam_id:int, fg_id:str) -> str:
-    ottoneu_db.players.update_one({'fg_majorleagueid':fg_id}, { '$set': {'mlbam_id': mlbam_id}})
+    ottoneu_db.players.update_one({'fg_majorleagueid':fg_id}, { '$set': {'mlbam_id': mlbam_id.item()}})
     return fg_id
 
 def find_double_headers(df:DataFrame, game_date:str) -> dict[int, tuple[bool, DataFrame, DataFrame]]:
@@ -280,8 +300,8 @@ def find_double_headers(df:DataFrame, game_date:str) -> dict[int, tuple[bool, Da
     for gpk in game_pks:
         game_df = df.loc[df['game_pk'] == gpk].sort_values(['at_bat_number', 'pitch_number'], ascending=[True, True])
         home_sp = game_df.iloc[0]['player_name']
-        away_sp = game_df.loc[game_df['inning_topbot'] == 'bot'].iloc[0]['player_name']
-        last_row = game_df.tail(1)
+        away_sp = game_df.loc[game_df['inning_topbot'] == 'Bot'].iloc[0]['player_name']
+        last_row = game_df.tail(1).iloc[0]
         home_team = last_row['home_team']
         if home_team not in game_summary:
             game_summary[home_team] = list()
@@ -290,7 +310,7 @@ def find_double_headers(df:DataFrame, game_date:str) -> dict[int, tuple[bool, Da
     home_teams = double_headers['home_team'].unique()
     for team in home_teams:
         fg_team = const.get_fg_from_sc_team(team)
-        url = f'https://www.fangraphs.com/wins.aspx?date={game_date}&team={fg_team}&dh=1&season={game_date[:4]}'
+        url = f'https://www.fangraphs.com/boxscore.aspx?date={game_date}&team={fg_team}&dh=1&season={game_date[:4]}'
         bat_df, pitch_df, score = fg_box_scores.get_game_dfs(url)
         games = game_summary[team]
         if games[0][1] == games[1][1] and games[0][2] == games[1][2]:
@@ -312,29 +332,3 @@ def find_double_headers(df:DataFrame, game_date:str) -> dict[int, tuple[bool, Da
                 results[games[0][0]] = (False, bat_df, pitch_df)
                 results[games[1][0]] = (True, bat_df, pitch_df)
     return results
-
-def main():
-    batter_data = pd.read_csv('test_batter.csv')
-    batter_data.set_index('mlbID', inplace=True)
-    batter_data['H_Points'] = batter_data.apply(hitting_points, axis=1)
-
-    pitcher_data = pd.read_csv('test_pitcher.csv')
-    pitcher_data = pitcher_data.fillna(0)
-    pitcher_data.set_index('mlbID', inplace=True)
-    pitcher_data['P_Points'] = pitcher_data.apply(pitching_points, axis=1)
-    pitcher_data['SABR_Points'] = pitcher_data.apply(sabr_points, axis=1)
-    #print(pitcher_data.head())
-    
-    #return None
-
-    statcast_data = pd.read_csv('test_statcast.csv')
-
-    inserts = process_data(datetime.datetime.strptime('2024-08-29', '%Y-%m-%d'), statcast_data, batter_data, pitcher_data)
-
-    for i in range(5):
-        print(inserts[i])
-    for i in range(5):
-        print(inserts[-(i+1)])
-
-if __name__ == '__main__':
-    main()

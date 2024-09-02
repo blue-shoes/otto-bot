@@ -135,41 +135,7 @@ def get_game_xwoba(df:DataFrame, filter_col:str) -> dict[int, float]:
 
 def get_statcast_dataframe(game_date:str) -> DataFrame:
     df = statcast(game_date)
+    df[['batter', 'pitcher']] = df[['batter', 'pitcher']].apply(pd.to_numeric)
     return df[['game_pk','game_date','player_name', 'batter', 'pitcher', 'events', 'des', 'p_throws', 'home_team', 'away_team', 'on_1b', 'on_2b', 'on_3b', 'outs_when_up', 'inning', 'inning_topbot', 
              'fielder_2','fielder_3','fielder_4','fielder_5','fielder_6','fielder_7','fielder_8','fielder_9', 'estimated_woba_using_speedangle','at_bat_number','pitch_number',
              'away_score', 'home_score', 'fld_score', 'bat_score','post_away_score', 'post_home_score', 'post_fld_score', 'post_bat_score']]
-
-def main():
-    #date = '2024-08-10'
-    #pitchers_df = pitching_stats_range(date)
-    #batting_df = batting_stats_range(date)
-    #df = statcast(date)
-    df = pd.read_csv('single_game.csv')
-    df = df[['game_pk','game_date','player_name', 'batter', 'pitcher', 'events', 'des', 'p_throws', 'home_team', 'away_team', 'on_1b', 'on_2b', 'on_3b', 'outs_when_up', 'inning', 'inning_topbot', 
-             'fielder_2','fielder_3','fielder_4','fielder_5','fielder_6','fielder_7','fielder_8','fielder_9', 'estimated_woba_using_speedangle','at_bat_number','pitch_number',
-             'away_score', 'home_score', 'fld_score', 'bat_score','post_away_score', 'post_home_score', 'post_fld_score', 'post_bat_score']]
-    
-    game_pks = df['game_pk'].unique()
-    print(game_pks)
-    count = 0
-    day_count = dict()
-    for game_pk in game_pks:
-        game_df = df.loc[df['game_pk'] == game_pk]
-        game_df.sort_values(['at_bat_number', 'pitch_number'], ascending=[True, True])
-        starters = get_starters(game_df)
-        b_xwobas = get_game_xwoba(game_df, 'batter')
-        p_xwobas = get_game_xwoba(game_df, 'pitcher')
-        print(b_xwobas)
-        print(p_xwobas)
-        #holds = get_holds(game_df, pitchers_df)
-        #game_date = game_df.iloc[0]['game_date']
-        #if game_date not in day_count:
-        #    day_count[game_date] = 0
-        #day_count[game_date] += len(holds)
-        #count += len(holds)
-    #print(f'There were {count} holds')
-    #for key, val in day_count.items():
-    #    print(f'{key}: {val} holds')
-
-if __name__ == '__main__':
-    main()

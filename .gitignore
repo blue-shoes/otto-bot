@@ -4,3 +4,4 @@ src/lambda_functions/*/dependencies
 src/lambda_functions/*/*.zip
 src/lambda_functions/*/__pycache__
 *.csv
+*mongo.conf*

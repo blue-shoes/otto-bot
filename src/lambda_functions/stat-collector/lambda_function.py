@@ -156,7 +156,7 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                 b_series = batter_data.loc[pid]
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid, 'name': batter_data.loc[pid]['Name']}
+            insert['metadata'] = {'mlbam_id': pid}
             insert['timestamp'] = insert_date
             insert['PA'] = b_series['PA']
             insert['H_Points'] = b_series['H_Points']
@@ -193,7 +193,7 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                 p_series = pitcher_data.loc[pid]
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid, 'name': pitcher_data.loc[pid]['Name']}
+            insert['metadata'] = {'mlbam_id': pid}
             insert['timestamp'] = insert_date
             insert['BF'] = p_series['BF']
             insert['GS'] = p_series['GS']

@@ -32,14 +32,20 @@ def lambda_handler(event, context):
         hist_month = None
     
     if hist_month:
+        print(f'loading month {hist_month}')
         month = datetime.datetime.strptime(f'{hist_month}-01', '%Y-%m-%d')
         end_of_month = datetime.datetime(year=month.year, month=month.month+1, day=1) - timedelta(days=1)
         sc_data = statcast_processing.get_statcast_dataframe(datetime.datetime.strftime(month, '%Y-%m-%d'), datetime.datetime.strftime(end_of_month, '%Y-%m-%d'))
         inserts = list()
-        for game_date_str in sc_data['game_date'].unique():
+        for game_date in sc_data['game_date'].unique():
+            game_date_str = datetime.datetime.strftime(pd.to_datetime(game_date), '%Y-%m-%d')
             print(f'Getting stats for {game_date_str}')
-            sc_data = sc_data.loc[sc_data['game_date'] == game_date_str]
-            _, batter_data, pitcher_data = load_day_stats(game_date_str, False)
+            sc_data = sc_data.loc[sc_data['game_date'] == game_date]  
+            try: 
+                _, batter_data, pitcher_data = load_day_stats(game_date_str, False)
+            except IndexError as e:
+                print(e)
+                continue
             inserts.extend(process_data(game_date_str, sc_data, batter_data, pitcher_data))
         return insert_day_stats(inserts, game_date_str)
 
@@ -53,7 +59,15 @@ def lambda_handler(event, context):
     return save_days_stats(game_date_str)
 
 def save_days_stats(game_date_str:str):
-    sc_data, batter_data, pitcher_data = load_day_stats(game_date_str)
+    print(f'Getting stats for {game_date_str}')
+    try:
+        sc_data, batter_data, pitcher_data = load_day_stats(game_date_str)
+    except IndexError as e:
+        print(e)
+        return {
+            'statusCode': 400,
+            'body': json.dumps('Could not parse day stats from b-ref')
+        }
 
     inserts = process_data(game_date_str, sc_data, batter_data, pitcher_data)
 
@@ -104,7 +118,6 @@ def load_day_stats(game_date_str:str, get_statcast:bool = True) -> tuple[DataFra
     return sc_data, batter_data, pitcher_data
 
 def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pitcher_data:DataFrame) -> list[dict]:
-    print(game_date_str)
     game_date = datetime.datetime.strptime(game_date_str, '%Y-%m-%d')
 
     game_pks = sc_data['game_pk'].unique()

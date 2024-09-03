@@ -63,13 +63,14 @@ def get_holds(df:DataFrame, pitchers_df:DataFrame) -> dict[int, list[int]]:
     p_with_holds = dict()
     for pid in pitchers_df.index:
         p_df = df.loc[df['pitcher'] == pid]
+
         game_pks = p_df['game_pk'].unique()
         hold_game_pk = list()
         for game_pk in game_pks:
-            p_df = p_df.loc[p_df['game_pk'] == game_pk]
-            p_df = p_df.sort_values(['at_bat_number', 'pitch_number'], ascending=[True, True])
-            i_row = p_df.iloc[0]
-            f_row = p_df.iloc[-1]
+            g_df = p_df.loc[p_df['game_pk'] == game_pk]
+            g_df = g_df.sort_values(['at_bat_number', 'pitch_number'], ascending=[True, True])
+            i_row = g_df.iloc[0]
+            f_row = g_df.iloc[-1]
 
             if i_row['inning'] <= 5:
                 # "Stats provider BIS [now SIS] "will not award a hold or a blown save to a pitcher who enters a game in the fifth inning or earlier"
@@ -103,7 +104,7 @@ def get_holds(df:DataFrame, pitchers_df:DataFrame) -> dict[int, list[int]]:
                 # Last batter of game; must be save or walk-off
                 continue
             lost_lead = False
-            for _, pitch in p_df.iterrows():
+            for _, pitch in g_df.iterrows():
                 if pitch['post_fld_score'] <= pitch['post_bat_score']:
                     # Lost and regained lead, eligible for win, not hold
                     lost_lead = True

@@ -33,7 +33,7 @@ def parse_pitcher_box(soup:BeautifulSoup) -> DataFrame:
     v_df = get_box_df(soup, 'WinsBox1_dg2ap')
 
     p_df = pd.concat([h_df, v_df])
-    p_df.rename(columns={'TBF':'BF'})
+    p_df = p_df.rename(columns={'TBF':'BF'})
     p_df.index = p_df.index.astype('int')
 
     return p_df

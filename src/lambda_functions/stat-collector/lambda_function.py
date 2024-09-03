@@ -11,6 +11,7 @@ from pandas import DataFrame, Series
 import math
 from typing import Optional
 import time
+import numpy as np
 
 from pybaseball import pitching_stats_range, batting_stats_range, playerid_reverse_lookup
 
@@ -205,7 +206,7 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
 
             inserts.append(insert)
 
-            if pid in pitcher_data.index:
+            if pid in game_df['pitcher'].unique():
                 two_way[pid] = insert
 
         for pid in game_df['pitcher'].unique():
@@ -229,12 +230,12 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                             continue
                         stat_dict[cat] = pitcher_data.loc[pid][cat] - dh_tuple[2].loc[fg_id][cat]
                     p_series = Series(stat_dict)
-                p_series['P_Points'] = pitching_points(p_series)
-                p_series['SABR_Points'] = sabr_points(p_series)
+                p_series['P_Points'] = np.float64(pitching_points(p_series))
+                p_series['SABR_Points'] = np.float64(sabr_points(p_series))
             else:
                 p_series = pitcher_data.loc[pid]
             
-            if pid not in batter_data.index:
+            if pid not in game_df['batter'].unique():
                 insert = dict()
                 insert['metadata'] = {'mlbam_id': pid.item()}
                 insert['timestamp'] = insert_date
@@ -254,10 +255,15 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                 s_points = p_series['SABR_Points'] + 4.0
             else:
                 p_points = p_series['P_Points']
-                s_points =  p_series['SABR_Points'] + 4.0
+                s_points =  p_series['SABR_Points']
             insert['P_xwOBA'] = p_xwoba[pid]
-            insert['P_Points'] = p_points.item()
-            insert['SABR_Points'] = s_points.item()
+
+            if isinstance (p_points, np.float64):
+                insert['P_Points'] = p_points.item()
+                insert['SABR_Points'] = s_points.item()
+            else:
+                insert['P_Points'] = p_points
+                insert['SABR_Points'] = s_points
 
     print(f'Inserting {len(inserts)} player games')
     return inserts

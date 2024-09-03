@@ -9,12 +9,12 @@ def get_starters(df:DataFrame) -> list[int]:
     visit_start = set()
     for _, row in df.iterrows():
         if not home_start:
-            home_start.update([row[f'fielder_{pos}'] for pos in range(2,9)])
+            home_start.update([row[f'fielder_{pos}'] for pos in range(2,10)])
         if len(visit_start) < 9:
             if row['inning_topbot'] == 'top':
                 visit_start.add(row['batter'])
             else:
-                visit_start.update([row[f'fielder_{pos}'] for pos in range(2,9)])
+                visit_start.update([row[f'fielder_{pos}'] for pos in range(2,10)])
         if len(home_start) < 9 and row['inning_topbot'] == 'bot':
             home_start.add(row['batter'])
         if len(visit_start) >= 9 and len(home_start) >= 9:
@@ -61,8 +61,7 @@ def get_fielder_ids(pa: Series) -> list[int]:
 def get_holds(df:DataFrame, pitchers_df:DataFrame) -> dict[int, list[int]]:
     '''Returns dict with mlbam id as key and list of game_pks where player accumulated a hold'''
     p_with_holds = dict()
-    pitcher_ids = df['pitcher'].unique()
-    for pid in pitcher_ids:
+    for pid in pitchers_df.index:
         p_df = df.loc[df['pitcher'] == pid]
         game_pks = p_df['game_pk'].unique()
         hold_game_pk = list()
@@ -133,9 +132,9 @@ def get_game_xwoba(df:DataFrame, filter_col:str) -> dict[int, float]:
         xwoba_dict[pid] = p_df['estimated_woba_using_speedangle'].mean()
     return xwoba_dict
 
-def get_statcast_dataframe(game_date:str) -> DataFrame:
-    df = statcast(game_date)
-    df[['batter', 'pitcher']] = df[['batter', 'pitcher']].apply(pd.to_numeric)
+def get_statcast_dataframe(game_date:str, end_date:str=None) -> DataFrame:
+    df = statcast(game_date, end_date)
+    df[['batter', 'pitcher', 'on_1b', 'on_2b', 'on_3b','fielder_2','fielder_3','fielder_4','fielder_5','fielder_6','fielder_7','fielder_8','fielder_9']] = df[['batter', 'pitcher', 'on_1b', 'on_2b', 'on_3b','fielder_2','fielder_3','fielder_4','fielder_5','fielder_6','fielder_7','fielder_8','fielder_9']].apply(pd.to_numeric)
     return df[['game_pk','game_date','player_name', 'batter', 'pitcher', 'events', 'des', 'p_throws', 'home_team', 'away_team', 'on_1b', 'on_2b', 'on_3b', 'outs_when_up', 'inning', 'inning_topbot', 
              'fielder_2','fielder_3','fielder_4','fielder_5','fielder_6','fielder_7','fielder_8','fielder_9', 'estimated_woba_using_speedangle','at_bat_number','pitch_number',
              'away_score', 'home_score', 'fld_score', 'bat_score','post_away_score', 'post_home_score', 'post_fld_score', 'post_bat_score']]

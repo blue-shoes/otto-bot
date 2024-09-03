@@ -24,15 +24,24 @@ def get_yesterday_date_str() -> str:
 
 def lambda_handler(event, context):
 
-    if "hist_year" in event:
-        hist_year = event['hist_year']
+    if "hist_month" in event:
+        hist_month = event['hist_month']
     elif "queryStringParameters" in event:
-        hist_year = event['queryStringParameters'].get('hist_year', None)
+        hist_month = event['queryStringParameters'].get('hist_month', None)
     else:
-        hist_year = None
+        hist_month = None
     
-    #if hist_year:
-    #    return next_hist_year_date(hist_year)
+    if hist_month:
+        month = datetime.datetime.strptime(f'{hist_month}-01', '%Y-%m-%d')
+        end_of_month = datetime.datetime(year=month.year, month=month.month+1, day=1) - timedelta(days=1)
+        sc_data = statcast_processing.get_statcast_dataframe(datetime.datetime.strftime(month, '%Y-%m-%d'), datetime.datetime.strftime(end_of_month, '%Y-%m-%d'))
+        inserts = list()
+        for game_date_str in sc_data['game_date'].unique():
+            print(f'Getting stats for {game_date_str}')
+            sc_data = sc_data.loc[sc_data['game_date'] == game_date_str]
+            _, batter_data, pitcher_data = load_day_stats(game_date_str, False)
+            inserts.extend(process_data(game_date_str, sc_data, batter_data, pitcher_data))
+        return insert_day_stats(inserts, game_date_str)
 
     if "game_date" in event:
         game_date_str = event['game_date']
@@ -73,8 +82,11 @@ def insert_day_stats(inserts:dict, game_date_str:str) -> dict:
         'statusCode': 200
     }
 
-def load_day_stats(game_date_str:str) -> tuple[DataFrame, DataFrame, DataFrame]:
-    sc_data = statcast_processing.get_statcast_dataframe(game_date_str)
+def load_day_stats(game_date_str:str, get_statcast:bool = True) -> tuple[DataFrame, DataFrame, DataFrame]:
+    if get_statcast:
+        sc_data = statcast_processing.get_statcast_dataframe(game_date_str)
+    else:
+        sc_data = None
 
     pitcher_data = pitching_stats_range(game_date_str)
     pitcher_data = pitcher_data.fillna(0)
@@ -92,6 +104,7 @@ def load_day_stats(game_date_str:str) -> tuple[DataFrame, DataFrame, DataFrame]:
     return sc_data, batter_data, pitcher_data
 
 def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pitcher_data:DataFrame) -> list[dict]:
+    print(game_date_str)
     game_date = datetime.datetime.strptime(game_date_str, '%Y-%m-%d')
 
     game_pks = sc_data['game_pk'].unique()
@@ -127,12 +140,17 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
         else:
             insert_date = game_date
 
+        two_way = dict()
+
         for pid in game_df['batter'].unique():
-            away = game_df.loc[game_df['batter'] == pid].iloc[0]['inning_topbot'] == 'Top'
-            if away:
+            if pid not in batter_data.index:
+                continue
+
+            if get_away_player(game_df, pid):
                 sp_hand = away_batter_sp_hand
             else:
                 sp_hand = home_batter_sp_hand
+
             if batter_data.loc[pid]['G'] > 1:
                 dh_tuple = double_headers[game_pk]
                 fg_id = get_fg_id(pid, id_map, dh_tuple[1], batter_data.loc[pid], batting_order_and_finishers[pid][0])
@@ -157,19 +175,24 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
                 points = b_series['H_Points']
             
             insert = dict()
-            insert['metadata'] = {'mlbam_id': pid, 'name': batter_data.loc[pid]['Name']}
+            insert['metadata'] = {'mlbam_id': pid.item()}
             insert['timestamp'] = insert_date
-            insert['PA'] = b_series['PA']
-            insert['H_Points'] = points
+            insert['PA'] = b_series['PA'].item()
+            insert['H_Points'] = points.item()
             insert['GS'] = pid in starters
             insert['BO'] = batting_order_and_finishers[pid][0]
             insert['GF'] = batting_order_and_finishers[pid][1]
-            insert['H_xwOBA'] = b_xwoba[pid]
+            insert['H_xwOBA'] = b_xwoba[pid].item()
             insert['SP_Hand'] = sp_hand
 
             inserts.append(insert)
 
+            if pid in pitcher_data.index:
+                two_way[pid] = insert
+
         for pid in game_df['pitcher'].unique():
+            if pid not in pitcher_data.index:
+                continue
             if pitcher_data.loc[pid]['G'] > 1:
                 dh_tuple = double_headers[game_pk]
                 fg_id = get_fg_id(pid, id_map, dh_tuple[2], pitcher_data.loc[pid], None)
@@ -193,12 +216,18 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
             else:
                 p_series = pitcher_data.loc[pid]
             
-            insert = dict()
-            insert['metadata'] = {'mlbam_id': pid}
-            insert['timestamp'] = insert_date
-            insert['BF'] = p_series['BF']
-            insert['GS'] = p_series['GS']
-            insert['IP'] = p_series['IP']
+            if pid not in batter_data.index:
+                insert = dict()
+                insert['metadata'] = {'mlbam_id': pid.item()}
+                insert['timestamp'] = insert_date
+                inserts.append(insert)
+            
+            else:
+                insert = two_way[pid]
+
+            insert['BF'] = p_series['BF'].item()
+            insert['GS'] = (p_series['GS'] == 1).item()
+            insert['IP'] = p_series['IP'].item()
             if p_series['SV'] == 1:
                 insert['SV'] = True
             if pid in hold_data and game_pk in hold_data[pid]:
@@ -208,12 +237,32 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
             else:
                 p_points = p_series['P_Points']
                 s_points =  p_series['SABR_Points'] + 4.0
-            insert['P_xwOBA'] = p_xwoba[pid]
-            insert['P_Points'] = p_points
-            insert['SABR_Points'] = s_points
+            insert['P_xwOBA'] = p_xwoba[pid].item()
+            insert['P_Points'] = p_points.item()
+            insert['SABR_Points'] = s_points.item()
 
-            inserts.append(insert)
+            
     return inserts
+
+def get_away_player(game_df:DataFrame, pid:int) -> bool:
+    batting_df = game_df.loc[game_df['batter'] == pid]
+    if len(batting_df) > 0:
+        return batting_df.iloc[0]['inning_topbot'] == 'Top'
+
+    # Did not have a PA, check field
+    for pos in range(2,10):
+        tmp_df = game_df.loc[game_df[f'fielder_{pos}'] == pid]
+        if len(tmp_df) > 0:
+            return tmp_df.iloc[0]['inning_topbot'] == 'Bot'
+
+    # Only pinch ran
+    for base in range(1,4):
+        tmp_df = game_df.loc[game_df[f'on_{base}b'] == pid]
+        if len(tmp_df) > 0:
+            return tmp_df.iloc[0]['inning_topbot'] == 'Top'
+
+    raise ValueError(f'Player Id {pid} could not be found in the game DF')
+
 
 def hitting_points(row:Series) -> float:
     return -1.0*row['AB'] + 5.6*row['H'] + 2.9*row['2B'] + 5.7*row['3B'] + 9.4*row['HR']+3.0*row['BB']+3.0*row['HBP']+1.9*row['SB']-2.8*row['CS']
@@ -286,7 +335,7 @@ def get_fg_id(mlbam_id: str, id_map: DataFrame, fg_box: DataFrame, day_line:Seri
     # Matched on name and batting order position and couldn't eliminate by statline. Not sure what else we can do at this point. Seems very rare.
     return -1
         
-def add_mlbam_id_to_db(mlbam_id:int, fg_id:int|str) -> str:
+def add_mlbam_id_to_db(mlbam_id:int, fg_id) -> str:
     print(f'adding {mlbam_id.item()} mlbam to {fg_id}')
     ottoneu_db.players.update_one({'fg_majorleagueid':str(fg_id)}, { '$set': {'mlbam_id': mlbam_id.item()}})
     return int(fg_id)

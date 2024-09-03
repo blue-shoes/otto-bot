@@ -83,8 +83,8 @@ def get_holds(df:DataFrame, pitchers_df:DataFrame) -> dict[int, list[int]]:
                 continue
             if i_row['inning'] == f_row['inning']:
                 if i_row['outs_when_up'] == f_row['outs_when_up']:
-                    if 'out' not in f_row['events']: 
-                        if not ('sac_' in f_row['events'] and 'out' in f_row['des']):
+                    if 'out' not in str(f_row['events']): 
+                        if not ('sac_' in str(f_row['events']) and 'out' in str(f_row['des'])):
                             # Did not record out
                             continue
             score_diff = i_row['fld_score'] - i_row['bat_score']
@@ -128,8 +128,11 @@ def get_game_xwoba(df:DataFrame, filter_col:str) -> dict[int, float]:
     events = df.loc[df['estimated_woba_using_speedangle'].notna()]
     xwoba_dict = dict()
     for pid in player_ids:
-        p_df = events.loc[df[filter_col] == pid]
-        xwoba_dict[pid] = p_df['estimated_woba_using_speedangle'].mean()
+        p_df = events.loc[events[filter_col] == pid]
+        if p_df.empty:
+            xwoba_dict[pid] = 0.0
+        else:
+            xwoba_dict[pid] = p_df['estimated_woba_using_speedangle'].mean().item()
     return xwoba_dict
 
 def get_statcast_dataframe(game_date:str, end_date:str=None) -> DataFrame:

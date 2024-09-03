@@ -10,6 +10,7 @@ import pandas as pd
 from pandas import DataFrame, Series
 import math
 from typing import Optional
+import time
 
 from pybaseball import pitching_stats_range, batting_stats_range, playerid_reverse_lookup
 
@@ -35,18 +36,22 @@ def lambda_handler(event, context):
         print(f'loading month {hist_month}')
         month = datetime.datetime.strptime(f'{hist_month}-01', '%Y-%m-%d')
         end_of_month = datetime.datetime(year=month.year, month=month.month+1, day=1) - timedelta(days=1)
+        print(f'month={month}, end_of_month={end_of_month}')
         sc_data = statcast_processing.get_statcast_dataframe(datetime.datetime.strftime(month, '%Y-%m-%d'), datetime.datetime.strftime(end_of_month, '%Y-%m-%d'))
         inserts = list()
         for game_date in sc_data['game_date'].unique():
             game_date_str = datetime.datetime.strftime(pd.to_datetime(game_date), '%Y-%m-%d')
             print(f'Getting stats for {game_date_str}')
-            sc_data = sc_data.loc[sc_data['game_date'] == game_date]  
+            day_sc_data = sc_data.loc[sc_data['game_date'] == game_date]  
             try: 
                 _, batter_data, pitcher_data = load_day_stats(game_date_str, False)
             except IndexError as e:
                 print(e)
                 continue
-            inserts.extend(process_data(game_date_str, sc_data, batter_data, pitcher_data))
+            inserts.extend(process_data(game_date_str, day_sc_data, batter_data, pitcher_data))
+            # BRef rate limitation work around
+            time.sleep(15)
+        print(f'inserting a total of {len(inserts)} player games')
         return insert_day_stats(inserts, game_date_str)
 
     if "game_date" in event:
@@ -195,7 +200,7 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
             insert['GS'] = pid in starters
             insert['BO'] = batting_order_and_finishers[pid][0]
             insert['GF'] = batting_order_and_finishers[pid][1]
-            insert['H_xwOBA'] = b_xwoba[pid].item()
+            insert['H_xwOBA'] = b_xwoba[pid]
             insert['SP_Hand'] = sp_hand
 
             inserts.append(insert)
@@ -250,11 +255,11 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
             else:
                 p_points = p_series['P_Points']
                 s_points =  p_series['SABR_Points'] + 4.0
-            insert['P_xwOBA'] = p_xwoba[pid].item()
+            insert['P_xwOBA'] = p_xwoba[pid]
             insert['P_Points'] = p_points.item()
             insert['SABR_Points'] = s_points.item()
 
-            
+    print(f'Inserting {len(inserts)} player games')
     return inserts
 
 def get_away_player(game_df:DataFrame, pid:int) -> bool:

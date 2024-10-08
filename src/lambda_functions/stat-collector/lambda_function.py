@@ -247,15 +247,15 @@ def process_data(game_date_str:str, sc_data:DataFrame, batter_data:DataFrame, pi
             insert['BF'] = p_series['BF'].item()
             insert['GS'] = (p_series['GS'] == 1).item()
             insert['IP'] = p_series['IP'].item()
+            p_points = p_series['P_Points']
+            s_points =  p_series['SABR_Points']
             if p_series['SV'] == 1:
                 insert['SV'] = True
-            if pid in hold_data and game_pk in hold_data[pid]:
+            elif pid in hold_data and game_pk in hold_data[pid]:
                 insert['HLD'] = True
                 p_points = p_series['P_Points'] + 4.0
                 s_points = p_series['SABR_Points'] + 4.0
-            else:
-                p_points = p_series['P_Points']
-                s_points =  p_series['SABR_Points']
+               
             insert['P_xwOBA'] = p_xwoba[pid]
 
             if isinstance (p_points, np.float64):

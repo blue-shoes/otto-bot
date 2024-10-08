@@ -3,6 +3,7 @@ import requests
 import boto3
 import os
 import urllib
+import datetime
 
 client = boto3.client('lambda')
 
@@ -121,7 +122,13 @@ TRADE_TEMPLATE = """
 				],
 				"action_id": "format_select_action"
 			}
-		},
+		}
+        <loantemplatecontent>
+	]
+"""
+
+LOAN_TEMPLATE = """
+,
 		{
 			"type": "input",
 			"block_id": "loan_type",
@@ -184,7 +191,6 @@ TRADE_TEMPLATE = """
 			},
 			"optional": true
 		}
-	]
 """
 
 VIEW_TEMPLATE = """
@@ -440,6 +446,12 @@ def create_view(msg_map, blocks, title):
     view = view.replace('<metadata>', '"' + msg_map['command'] +"," + msg_map['response_url'] + ',' + msg_map['channel_id']+ ',' + msg_map['team_id']+'"')
     view = view.replace('<blocks>', blocks)
     view = view.replace('<title>', title)
+    now_month = datetime.datetime.now().month
+    if now_month < 2 or now_month > 9:
+        loan_temp = ''
+    else:
+        loan_temp = LOAN_TEMPLATE
+    view = view.replace('<loantemplatecontent>', loan_temp)
     return view
 
 def get_empty_player_list_blocks(name):

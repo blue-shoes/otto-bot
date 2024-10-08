@@ -129,27 +129,31 @@ def trade_review_result(payload, msg_map, metadata):
             })
         }
 
-    loan_type = vals['loan_type']['checkboxes-action']['selected_option']['value']
-    if loan_type == 'partial-loan':
-        try:
-            partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
-            if partial_loan_amount[0] == '$':
-                partial_loan_amount = partial_loan_amount[1:]
-            _ = int(partial_loan_amount)
-        except ValueError:
-            return {
-                'statusCode': 200,
-                "headers": {
-                        'Content-Type': 'application/json',
-                    },
-                'body': json.dumps({
-                    'response_action': 'errors',
-                    'errors': {
-                        'partial_loan': 'Enter custom loan as only number of dollars (e.g. \"10\")'
-                    }
-                })
-            }
+    if 'loan_type' in vals:
+        loan_type = vals['loan_type']['checkboxes-action']['selected_option']['value']
+        if loan_type == 'partial-loan':
+            try:
+                partial_loan_amount = vals['partial_loan']['plain_text_input-action']['value']
+                if partial_loan_amount[0] == '$':
+                    partial_loan_amount = partial_loan_amount[1:]
+                _ = int(partial_loan_amount)
+            except ValueError:
+                return {
+                    'statusCode': 200,
+                    "headers": {
+                            'Content-Type': 'application/json',
+                        },
+                    'body': json.dumps({
+                        'response_action': 'errors',
+                        'errors': {
+                            'partial_loan': 'Enter custom loan as only number of dollars (e.g. \"10\")'
+                        }
+                    })
+                }
+        else:
+            partial_loan_amount = None
     else:
+        loan_type = 'off-season'
         partial_loan_amount = None
     
     if selected_format == '1':
@@ -238,8 +242,16 @@ def trade_review_result(payload, msg_map, metadata):
             else:
                 net = f'${net_int}'
             text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
+        elif loan_type == 'off-season':
+            if salary_diff == 0:
+                text_response += '\n\t\tNet $0'
+            else:
+                text_response += f'\n\t\tNet -${salary_diff}'
         else:
-            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
+            if salary_diff == 0:
+                text_response += '\n\t\tNo Loan (Net $0)'
+            else:
+                text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
 
     text_response += '\n:two:  '
     
@@ -255,8 +267,16 @@ def trade_review_result(payload, msg_map, metadata):
             else:
                 net = f'${net_int}'
             text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
+        elif loan_type == 'off-season':
+            if salary_diff == 0:
+                text_response += '\n\t\tNet $0'
+            else:
+                text_response += f'\n\t\tNet -${salary_diff}'
         else:
-            text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
+            if salary_diff == 0:
+                text_response += '\n\t\tNo Loan (Net $0)'
+            else:
+                text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
 
     response_dict = {}
     response_dict['response_type'] = 'in_channel'

@@ -3,9 +3,8 @@ import boto3
 import os
 import math
 
-sqs = boto3.client('sqs')
+sns = boto3.client('sns')
 lambda_client = boto3.client('lambda')
-queueurl = sqs.get_queue_url(QueueName='Ottoneu-db-update-queue')['QueueUrl']
 
 def lambda_handler(event, context):
     
@@ -28,7 +27,12 @@ def lambda_handler(event, context):
         msg_map['league_ids'] = id_chunk
     
         try:
-            sqs.send_message(QueueUrl=queueurl, MessageBody=json.dumps(msg_map))
+            target_arn = os.environ['rosterload_sns_arn']
+            result = sns.publish(
+                TargetArn = target_arn,
+                Message = json.dumps({'default': json.dumps(msg_map)})
+            )
+            print(result)
         except Exception as e:
             print(e)
             return {

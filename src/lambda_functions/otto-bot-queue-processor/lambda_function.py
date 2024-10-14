@@ -347,30 +347,32 @@ SHOW_PLAYER_TEMPLATE = """
 def lambda_handler(event, context):
     
     try:
-
         print(event)
         
-        if 'command' in event:
-            msg_map = event
+        if event.get('Records', None):
+            msg_map = list()
+            for record in event['Records']:
+                msg_map.append(json.loads(json.loads(record['Sns']['Message']))['default'])
         else:
-            msg_map = json.loads(event['Records'][0]['body'])
-            print(msg_map)
-        
-        if msg_map['command'].startswith('/link-player'):
-            return show_player(msg_map)
-        
-        if msg_map['command'].startswith('/trade-review'):
-            return show_trade_window(msg_map)
+            msg_map = [event]
+
+        for record in msg_map:
+
+            try:
+                print(record)
+
+                if record['command'].startswith('/link-player'):
+                    show_player(record)
+                
+                if record['command'].startswith('/trade-review'):
+                    show_trade_window(record)
+            except Exception as e:
+                print(e)
     except Exception as e:
         print(e)
     
     return {
         'statusCode': 200
-    }
-    
-    return {
-        'statusCode': 404,
-        'body': json.dumps('Not a valid command')
     }
 
 def mongo_client_warm(msg_map):
@@ -388,6 +390,7 @@ def mongo_client_warm(msg_map):
     )
 
 def show_trade_window(msg_map):
+    print('in trade windwo')
     #Warm MongoClient
     mongo_client_warm(msg_map)
     view = create_view(msg_map, TRADE_TEMPLATE, 'Trade Review Wizard')
@@ -434,6 +437,7 @@ def show_player(msg_map):
     }
 
 def update_view(msg_map, view):
+    print('updating view')
     post_url = 'https://slack.com/api/views.update'
     data = urllib.parse.urlencode({
         "view": view,

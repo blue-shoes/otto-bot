@@ -8,7 +8,7 @@ import os
 import time
 
 lambda_client = boto3.client('lambda')
-sqs = boto3.client('sqs')
+sns = boto3.client('sns')
 
 valid_commands = ['/link-player', '/trade-review']
 loading_commands = ['/link-player', '/trade-review']
@@ -75,14 +75,13 @@ def lambda_handler(event, context):
                 'body': json.dumps('Error creating interactive dialog')
             }
     
-    queueurl = sqs.get_queue_url(QueueName='Otto-bot-queue')['QueueUrl']
-    try:
-        sqs.send_message(QueueUrl=queueurl, MessageBody=json.dumps(msg_map))
-    except:
-        return {
-            'statusCode': 400, 
-            'body': json.dumps('Error when submitting to the queue.')
-        }
+    target_arn = os.environ['ottobot_sns_arn']
+    result = sns.publish(
+        TargetArn = target_arn,
+        Message = json.dumps({'default': json.dumps(msg_map)})
+    )
+
+    print(result)
     
     return {
         'statusCode': 202

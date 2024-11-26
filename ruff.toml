@@ -1,0 +1,8 @@
+indent-width = 4
+line-length = 120
+[format]
+quote-style = "single"
+line-ending = "lf"
+indent-style = "space"
+[lint.isort]
+single-line-exclusions = ["json", "dict"]

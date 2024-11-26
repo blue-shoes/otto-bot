@@ -25,7 +25,6 @@ def main():
         except Exception as e:
             print(f"Exception for league {idx}")
             print(e)
-        break
 
     # print(update_leagues[0:5])
 

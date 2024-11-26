@@ -4,6 +4,7 @@ import boto3
 import os
 import urllib
 import datetime
+import time
 
 client = boto3.client('lambda')
 
@@ -54,73 +55,6 @@ TRADE_TEMPLATE = """
 				"type": "plain_text",
 				"text": "League Number",
 				"emoji": false
-			}
-		},
-		{
-			"type": "section",
-			"text": {
-				"type": "mrkdwn",
-				"text": "Format:"
-			},
-			"block_id": "format_block",
-			"accessory": {
-				"type": "static_select",
-				"placeholder": {
-					"type": "plain_text",
-					"text": "Select scoring format"
-				},
-				"initial_option": {
-					"text": {
-						"type": "plain_text",
-						"text": "FanGraphs Points"
-					},
-					"value": "3"
-				},
-				"options": [
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "FanGraphs Points"
-						},
-						"value": "3"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "SABR Points"
-						},
-						"value": "4"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "Classic 4x4"
-						},
-						"value": "1"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "Old School 5x5"
-						},
-						"value": "2"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "H2H FanGraphs Points"
-						},
-						"value": "5"
-					},
-					{
-						"text": {
-							"type": "plain_text",
-							"text": "H2H SABR Points"
-						},
-						"value": "6"
-					}
-				],
-				"action_id": "format_select_action"
 			}
 		}
         <loantemplatecontent>
@@ -344,11 +278,11 @@ SHOW_PLAYER_TEMPLATE = """
                 ]
 """
 
+
 def lambda_handler(event, context):
-    
     try:
         print(event)
-        
+
         if event.get('Records', None):
             msg_map = list()
             for record in event['Records']:
@@ -357,68 +291,107 @@ def lambda_handler(event, context):
             msg_map = [event]
 
         for record in msg_map:
-
             try:
                 print(record)
 
+                if 'ts' in record:
+                    add_voting(record)
+                    continue
+
                 if record['command'].startswith('/link-player'):
                     show_player(record)
-                
+
                 if record['command'].startswith('/trade-review'):
                     show_trade_window(record)
             except Exception as e:
                 print(e)
     except Exception as e:
         print(e)
-    
-    return {
-        'statusCode': 200
-    }
+
+    return {'statusCode': 200}
+
+
+def add_voting(msg_map):
+    payload = json.loads(msg_map['payload'])
+    metadata = payload['view']['private_metadata'].split(',')
+
+    header = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+    react_dict = dict()
+    react_dict['channel'] = metadata[2]
+    react_dict['token'] = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    react_dict['timestamp'] = msg_map['ts']
+
+    react_dict['name'] = 'one'
+    response = requests.post(
+        'https://slack.com/api/reactions.add',
+        headers=header,
+        data=urllib.parse.urlencode(react_dict),
+    )
+
+    print('sleeping')
+    time.sleep(1.5)
+    print('awake')
+
+    react_dict['name'] = 'scales'
+    response = requests.post(
+        'https://slack.com/api/reactions.add',
+        headers=header,
+        data=urllib.parse.urlencode(react_dict),
+    )
+
+    time.sleep(1.5)
+
+    react_dict['name'] = 'two'
+    response = requests.post(
+        'https://slack.com/api/reactions.add',
+        headers=header,
+        data=urllib.parse.urlencode(react_dict),
+    )
+
+    print(response.content)
+
+    return {'statusCode': 200}
+
 
 def mongo_client_warm(msg_map):
-    search_parameters = {
-        "league_id" : '160'
-    }
-    
+    search_parameters = {'league_id': '160'}
+
     search_version = os.environ[f'{msg_map["stage"]}_search_version']
-    
+
     _ = client.invoke(
-        FunctionName = os.environ['player_search_lambda_arn'],
-        InvocationType = 'RequestResponse',
-        Payload = json.dumps(search_parameters),
-        Qualifier = search_version
+        FunctionName=os.environ['player_search_lambda_arn'],
+        InvocationType='RequestResponse',
+        Payload=json.dumps(search_parameters),
+        Qualifier=search_version,
     )
+
 
 def show_trade_window(msg_map):
     print('in trade windwo')
-    #Warm MongoClient
+    # Warm MongoClient
     mongo_client_warm(msg_map)
     view = create_view(msg_map, TRADE_TEMPLATE, 'Trade Review Wizard')
     update_res = update_view(msg_map, view)
     print(update_res)
-        
-    return {
-        'statusCode': 200
-    }
+
+    return {'statusCode': 200}
+
 
 def show_player(msg_map):
+    search_parameters = {'search_name': msg_map['text'], 'stage': msg_map['stage']}
 
-    search_parameters = {
-        "search_name" : msg_map['text'],
-        "stage" : msg_map['stage']
-    }
-    
     search_version = os.environ[f'{msg_map["stage"]}_search_version']
-    
+
     response = client.invoke(
-        FunctionName = os.environ['player_search_lambda_arn'],
-        InvocationType = 'RequestResponse',
-        Payload = json.dumps(search_parameters),
-        Qualifier = search_version
+        FunctionName=os.environ['player_search_lambda_arn'],
+        InvocationType='RequestResponse',
+        Payload=json.dumps(search_parameters),
+        Qualifier=search_version,
     )
-    
+
     lambda_response = json.load(response['Payload'])
-    
+
     if 'body' in lambda_response:
         player_list = json.loads(lambda_response['body'])
     else:
@@ -427,33 +400,46 @@ def show_player(msg_map):
     if player_list:
         blocks = get_modal_response_block_show_players(player_list)
     else:
-        blocks = get_empty_player_list_blocks(msg_map['text']) 
-    
+        blocks = get_empty_player_list_blocks(msg_map['text'])
+
     view = create_view(msg_map, blocks, 'Player Search Wizard')
     update_res = update_view(msg_map, view)
 
-    return {
-        'statusCode': 200
-    }
+    return {'statusCode': 200}
+
 
 def update_view(msg_map, view):
     print('updating view')
     post_url = 'https://slack.com/api/views.update'
-    data = urllib.parse.urlencode({
-        "view": view,
-        "view_id": msg_map['view_id'],
-        "token": os.environ[f'{msg_map["stage"]}_{msg_map["team_id"]}_token']
-    })
-    data = data.encode("utf-8")
-    request = urllib.request.Request(post_url, data=data, method="POST")
-    request.add_header("Content-Type", "application/x-www-form-urlencoded")
+    data = urllib.parse.urlencode(
+        {
+            'view': view,
+            'view_id': msg_map['view_id'],
+            'token': os.environ[f'{msg_map["stage"]}_{msg_map["team_id"]}_token'],
+        }
+    )
+    data = data.encode('utf-8')
+    request = urllib.request.Request(post_url, data=data, method='POST')
+    request.add_header('Content-Type', 'application/x-www-form-urlencoded')
     res = urllib.request.urlopen(request).read().decode('utf-8')
     return res
+
 
 def create_view(msg_map, blocks, title):
     view = VIEW_TEMPLATE
     view = view.replace('<callbackid>', '"' + msg_map['trigger_id'] + '"')
-    view = view.replace('<metadata>', '"' + msg_map['command'] +"," + msg_map['response_url'] + ',' + msg_map['channel_id']+ ',' + msg_map['team_id']+'"')
+    view = view.replace(
+        '<metadata>',
+        '"'
+        + msg_map['command']
+        + ','
+        + msg_map['response_url']
+        + ','
+        + msg_map['channel_id']
+        + ','
+        + msg_map['team_id']
+        + '"',
+    )
     view = view.replace('<blocks>', blocks)
     view = view.replace('<title>', title)
     now_month = datetime.datetime.now().month
@@ -463,6 +449,7 @@ def create_view(msg_map, blocks, title):
         loan_temp = LOAN_TEMPLATE
     view = view.replace('<loantemplatecontent>', loan_temp)
     return view
+
 
 def get_empty_player_list_blocks(name):
     blocks = """
@@ -478,8 +465,8 @@ def get_empty_player_list_blocks(name):
             """
     return blocks.replace('<name>', '"' + name + '"')
 
+
 def get_modal_response_block_show_players(player_list):
-    
     text_player_list = []
     for player_dict in player_list:
         name = f"{player_dict['name']}, {player_dict['positions']}, {player_dict['org']}"

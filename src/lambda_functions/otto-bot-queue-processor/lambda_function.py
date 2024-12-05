@@ -56,6 +56,30 @@ TRADE_TEMPLATE = """
 				"text": "League Number",
 				"emoji": false
 			}
+		},
+        {
+			"type": "input",
+			"block_id": "opl_trade",
+			"element": {
+				"type": "checkboxes",
+				"options": [
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "OPL-Trade?",
+							"emoji": false
+						},
+						"value": "1"
+					}
+				],
+				"action_id": "opl-checkboxes-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": " ",
+				"emoji": true
+			},
+            "optional": true
 		}
         <loantemplatecontent>
 	]

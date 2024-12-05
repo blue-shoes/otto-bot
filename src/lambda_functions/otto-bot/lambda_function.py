@@ -87,6 +87,8 @@ def trade_review_result(payload, msg_map, metadata):
 
     league_id = vals['league_number']['plain_text_input-action']['value']
 
+    opl = len(vals['opl_trade']['opl-checkboxes-action']['selected_options']) > 0
+
     search_parameters = {'league_id': league_id}
 
     search_version = os.environ[f'{msg_map["stage"]}_league_load_version']
@@ -149,7 +151,10 @@ def trade_review_result(payload, msg_map, metadata):
         loan_type = 'off-season'
         partial_loan_amount = None
 
-    if league_format == 1:
+    if opl:
+        league_format = 3
+        text_response = 'Scoring: OPL'
+    elif league_format == 1:
         text_response = 'Scoring: 4x4'
     elif league_format == 2:
         text_response = 'Scoring: 5x5'

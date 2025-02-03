@@ -5,6 +5,7 @@ import os
 import urllib
 import datetime
 import time
+import zoneinfo
 
 client = boto3.client('lambda')
 
@@ -466,7 +467,7 @@ def create_view(msg_map, blocks, title):
     )
     view = view.replace('<blocks>', blocks)
     view = view.replace('<title>', title)
-    now_month = datetime.datetime.now().month
+    now_month = datetime.datetime.now(zoneinfo.ZoneInfo('US/Eastern')).month
     if now_month < 2 or now_month > 9:
         loan_temp = ''
     else:
@@ -493,20 +494,22 @@ def get_empty_player_list_blocks(name):
 def get_modal_response_block_show_players(player_list):
     text_player_list = []
     for player_dict in player_list:
-        name = f"{player_dict['name']}, {player_dict['positions']}, {player_dict['org']}"
+        name = f'{player_dict["name"]}, {player_dict["positions"]}, {player_dict["org"]}'
         if 'fg_majorleagueid' in player_dict:
-            id = f'{player_dict['ottoneu_id']},{player_dict['fg_majorleagueid']}'
+            id = f'{player_dict["ottoneu_id"]},{player_dict["fg_majorleagueid"]}'
         else:
-            id = f'{player_dict['ottoneu_id']},{player_dict['fg_minorleagueid']}'
+            id = f'{player_dict["ottoneu_id"]},{player_dict["fg_minorleagueid"]}'
         if 'mlbam_id' in player_dict and player_dict['mlbam_id'] != '0':
-            id += f',{player_dict['mlbam_id']}'
-        text_player_list.append(f'{{ \
+            id += f',{player_dict["mlbam_id"]}'
+        text_player_list.append(
+            f'{{ \
 						"text": {{ \
 							"type": "plain_text", \
 							"text": "{name}" \
                         }}, \
 						"value": "{id}" \
-					}}')
+					}}'
+        )
     player_text = ','.join(text_player_list)
     blocks = SHOW_PLAYER_TEMPLATE
     blocks = blocks.replace('<initial_option>', text_player_list[0])

@@ -10,7 +10,7 @@ lambda_client = boto3.client('lambda')
 
 def lambda_handler(event, context):
     league_response = requests.get('https://ottoneu.fangraphs.com/ajax/browseleagues')
-    league_ids = [d['ID'] for d in league_response.json()]
+    league_ids = [(d['ID'], d['GameType']) for d in league_response.json()]
 
     print(f'Total Number of Leagues: {len(league_ids)}')
 

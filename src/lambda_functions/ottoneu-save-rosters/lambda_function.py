@@ -93,8 +93,8 @@ def get_league_dict(lg_id: str) -> tuple[dict[str, Any], dict[int, str]]:
     if lg_id:
         roster_export_url = f'https://ottoneu.fangraphs.com/{lg_id}/rosterexport'
         response = requests.get(roster_export_url)
-
-        rost_soup = Soup(response.text, 'html.parser')
+        _html = response.text.replace('<', '').replace('>', '')
+        rost_soup = Soup(_html, 'html.parser')
         df = pd.read_csv(StringIO(rost_soup.contents[0]))
         df = df[df['Salary'].notna()]
         r_df = df[['ottoneu ID', 'TeamID', 'Salary']]

@@ -81,6 +81,30 @@ TRADE_TEMPLATE = """
 				"emoji": true
 			},
             "optional": true
+		},
+        {
+			"type": "input",
+			"block_id": "receive_results",
+			"element": {
+				"type": "checkboxes",
+				"options": [
+					{
+						"text": {
+							"type": "plain_text",
+							"text": "Receive DM(s) of Results?",
+							"emoji": false
+						},
+						"value": "1"
+					}
+				],
+				"action_id": "notification-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": " ",
+				"emoji": true
+			},
+            "optional": true
 		}
         <loantemplatecontent>
 	]
@@ -375,6 +399,16 @@ def add_voting(msg_map):
     )
 
     print(response.content)
+
+    notify_version = os.environ[f'{msg_map["stage"]}_notify_version']
+
+    if msg_map['notify']:
+        _ = client.invoke(
+            FunctionName=os.environ['save_transaction_arn'],
+            InvocationType='RequestResponse',
+            Payload=json.dumps(msg_map),
+            Qualifier=notify_version,
+        )
 
     return {'statusCode': 200}
 

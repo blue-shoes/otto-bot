@@ -35,7 +35,7 @@ def lambda_handler(event, context):
                 return trade_review_result(payload, msg_map, metadata)
             return {
                 'statusCode': 400,
-                'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}'),
+                'body': json.dumps(f'Not a valid slash command: {msg_map.get("command", None)}'),
             }
 
     valid_command = False
@@ -50,7 +50,7 @@ def lambda_handler(event, context):
         print(msg_map)
         return {
             'statusCode': 400,
-            'body': json.dumps(f'Not a valid slash command: {msg_map.get('command', None)}'),
+            'body': json.dumps(f'Not a valid slash command: {msg_map.get("command", None)}'),
         }
 
     # if not msg_map.get('text', None):
@@ -88,6 +88,11 @@ def trade_review_result(payload, msg_map, metadata):
     league_id = vals['league_number']['plain_text_input-action']['value']
 
     opl = len(vals['opl_trade']['opl-checkboxes-action']['selected_options']) > 0
+
+    try:
+        notify = len(vals['receive_results']['notification-action']['selected_options']) > 0
+    except KeyError:
+        notify = False
 
     search_parameters = {'league_id': league_id}
 
@@ -306,11 +311,12 @@ def trade_review_result(payload, msg_map, metadata):
             else:
                 text_response += f'\n\t\tNo Loan (Net -${salary_diff})'
 
+    token_lookup = f'{msg_map["stage"]}_{metadata[3]}_token'
     response_dict = {}
     response_dict['response_type'] = 'in_channel'
     response_dict['text'] = text_response
     response_dict['channel'] = metadata[2]
-    response_dict['token'] = os.environ[f'{msg_map["stage"]}_{metadata[3]}_token']
+    response_dict['token'] = os.environ[token_lookup]
     response_dict['unfurl_links'] = False
 
     header = {'Content-Type': 'application/x-www-form-urlencoded'}
@@ -326,6 +332,7 @@ def trade_review_result(payload, msg_map, metadata):
     ts = json.loads(response.content.decode('utf-8'))['ts']
 
     msg_map['ts'] = ts
+    msg_map['notify'] = notify
 
     target_arn = os.environ['ottobot_sns_arn']
     _ = sns.publish(TargetArn=target_arn, Message=json.dumps({'default': json.dumps(msg_map)}))

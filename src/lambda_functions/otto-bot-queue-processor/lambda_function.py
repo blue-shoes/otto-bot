@@ -46,17 +46,21 @@ TRADE_TEMPLATE = """
 			}
 		},
 		{
-			"type": "input",
+			"type": "section",
 			"block_id": "league_number",
-			"element": {
-				"type": "plain_text_input",
-				"action_id": "plain_text_input-action"
+			"text": {
+				"type": "mrkdwn",
+				"text": "League ID"
 			},
-			"label": {
-				"type": "plain_text",
-				"text": "League Number",
-				"emoji": false
-			}
+			"accessory": {
+                "action_id": "league_selection_event",
+                "type": "external_select",
+                "placeholder": {
+                    "type": "plain_text",
+                    "text": "Select a league",
+                    "emoji": true
+                }
+            }
 		},
         {
 			"type": "input",

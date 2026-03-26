@@ -24,6 +24,8 @@ def league_search(league_id: str):
 
     results = []
 
+    seen_ids = []
+
     if league_id.isdigit():
         league_id_regex = f'^{league_id}' + '.{0,2}$'
         print(league_id_regex)
@@ -33,14 +35,17 @@ def league_search(league_id: str):
             result = {}
             if not lg.get('name', None):
                 continue
-            result['name'] = lg
+            result['name'] = lg['name']
             result['id'] = lg['_id']
             results.append(result)
+            seen_ids.append(lg['_id'])
 
     league_name_regex = f'.*{league_id}.*'
     league_cursor = ottoneu_db.leagues.find({'name': {'$regex': league_name_regex, '$options': 'i'}}, {'name': 1})
 
     for lg in league_cursor:
+        if lg['_id'] in seen_ids:
+            continue
         result = {}
         result['name'] = lg['name']
         result['id'] = lg['_id']

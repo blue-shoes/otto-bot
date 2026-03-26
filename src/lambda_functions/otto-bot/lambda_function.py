@@ -85,14 +85,11 @@ def trade_review_result(payload, msg_map, metadata):
 
     # selected_format = vals['format_block']['format_select_action']['selected_option']['value']
 
-    league_id = vals['league_number']['plain_text_input-action']['value']
+    league_id = vals['league_number']['league_selection_event']['selected_option']['value']
 
     opl = len(vals['opl_trade']['opl-checkboxes-action']['selected_options']) > 0
 
-    try:
-        notify = len(vals['receive_results']['notification-action']['selected_options']) > 0
-    except KeyError:
-        notify = False
+    notify = len(vals['receive_results']['notification-action']['selected_options']) > 0
 
     search_parameters = {'league_id': league_id}
 

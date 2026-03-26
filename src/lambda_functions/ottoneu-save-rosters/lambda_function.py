@@ -50,6 +50,7 @@ def lambda_handler(event, context):
                 print(f'!!League_id {league_id} not valid')
                 continue
 
+            league_dict['name'] = li[2]
             league_dict['rosters'] = rosters
             league_dict['teams'] = teams
 

@@ -12,13 +12,13 @@ client = boto3.client('lambda')
 TRADE_TEMPLATE = """
 	"blocks": [
 		{
-			"type": "section",
+			"type": "input",
 			"block_id": "team_1",
-			"text": {
-				"type": "mrkdwn",
+			"label": {
+				"type": "plain_text",
 				"text": "Team 1 Players"
 			},
-			"accessory": {
+			"element": {
 				"type": "multi_external_select",
 				"placeholder": {
 					"type": "plain_text",
@@ -29,13 +29,13 @@ TRADE_TEMPLATE = """
 			}
 		},
 		{
-			"type": "section",
+			"type": "input",
 			"block_id": "team_2",
-			"text": {
-				"type": "mrkdwn",
+			"label": {
+				"type": "plain_text",
 				"text": "Team 2 Players"
 			},
-			"accessory": {
+			"element": {
 				"type": "multi_external_select",
 				"placeholder": {
 					"type": "plain_text",
@@ -43,14 +43,15 @@ TRADE_TEMPLATE = """
 					"emoji": true
 				},
 				"action_id": "player-search-action-2"
-			}
+			},
+            "optional": true
 		},
 		{
 			"type": "section",
 			"block_id": "league_number",
 			"text": {
 				"type": "mrkdwn",
-				"text": "League ID"
+				"text": "League"
 			},
 			"accessory": {
                 "action_id": "league_selection_event",

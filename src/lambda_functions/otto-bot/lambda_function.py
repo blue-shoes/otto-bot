@@ -187,7 +187,7 @@ def trade_review_result(payload, msg_map, metadata):
             'body': json.dumps(
                 {
                     'response_action': 'errors',
-                    'errors': {'league_number': 'Please select at least one player for the trade.'},
+                    'errors': {'team_1': 'Please select at least one player for the trade.'},
                 }
             ),
         }
@@ -207,7 +207,7 @@ def trade_review_result(payload, msg_map, metadata):
                     {
                         'response_action': 'errors',
                         'errors': {
-                            'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                            'team_1': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
                         },
                     }
                 ),
@@ -231,7 +231,7 @@ def trade_review_result(payload, msg_map, metadata):
                     {
                         'response_action': 'errors',
                         'errors': {
-                            'league_number': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
+                            'team_2': f'{option["text"]["text"].split(", ")[0]} is not rostered in league {league_id}'
                         },
                     }
                 ),
@@ -242,9 +242,11 @@ def trade_review_result(payload, msg_map, metadata):
 
     team_1_more_salary = team_1_salaries > team_2_salaries
     salary_diff = abs(team_1_salaries - team_2_salaries)
+    wrong_way_loan = False
 
     if partial_loan_amount and int(partial_loan_amount) < 0:
         team_1_more_salary = not team_1_more_salary
+        wrong_way_loan = True
 
     text_response += '\n:one:  '
 
@@ -260,8 +262,8 @@ def trade_review_result(payload, msg_map, metadata):
         if loan_type == 'full-loan':
             text_response += f'\n\t\tFull Loan (${salary_diff})'
         elif partial_loan_amount:
-            net_int = salary_diff - abs(int(partial_loan_amount))
-            if net_int < 0:
+            net_int = salary_diff - int(partial_loan_amount)
+            if net_int < 0 or wrong_way_loan:
                 net = f'-${abs(net_int)}'
             else:
                 net = f'${net_int}'
@@ -284,19 +286,21 @@ def trade_review_result(payload, msg_map, metadata):
             f'{option[1]} <https://ottoneu.fangraphs.com/playercard/{option[0]}/{league_format}|{option[2][0]}> {", ".join(option[2][1:])}'
             for option in team_2_names
         )
-    else:
+    elif team_1_more_salary:
         text_response += 'None'
 
     if not team_1_more_salary:
         if loan_type == 'full-loan':
             text_response += f'\n\t\tFull Loan (${salary_diff})'
         elif partial_loan_amount:
-            net_int = salary_diff - abs(int(partial_loan_amount))
-            if net_int < 0:
+            net_int = salary_diff - int(partial_loan_amount)
+            if net_int < 0 or wrong_way_loan:
                 net = f'-${abs(net_int)}'
             else:
                 net = f'${net_int}'
-            text_response += f'\n\t\t${abs(int(partial_loan_amount))} Loan (Net {net})'
+            if team_2_names:
+                text_response += '\n\t\t'
+            text_response += f'${abs(int(partial_loan_amount))} Loan (Net {net})'
         elif loan_type == 'off-season':
             if salary_diff == 0:
                 text_response += '\n\t\tNet $0'

@@ -38,7 +38,7 @@ def lambda_handler(event, context):
 
     leagues_col = ottoneu_db.leagues
 
-    update_leagues = list()
+    update_leagues = []
 
     print(f'League subset: {len(msg_map["league_ids"])}')
 
@@ -46,7 +46,7 @@ def lambda_handler(event, context):
         # print(f'Getting league_id: {league_id}' )
         try:
             league_id = li[0]
-            league_dict = dict()
+            league_dict = {}
             rosters, teams = get_league_dict(league_id)
             if not rosters:
                 print(f'!!League_id {league_id} not valid')
@@ -78,18 +78,23 @@ def lambda_handler(event, context):
 
 
 def get_scoring_format(format_name: str) -> int:
-    if format_name == 'Ottoneu Classic (4x4)':
-        return 1
-    if format_name == 'Old School (5x5)':
-        return 2
-    if format_name == 'FanGraphs Points':
-        return 3
-    if format_name == 'SABR Points':
-        return 4
-    if format_name == 'H2H FanGraphs Points':
-        return 5
-    if format_name == 'H2H SABR Points':
-        return 6
+    match format_name:
+        case 'Ottoneu Classic (4x4)':
+            return 1
+        case 'Old School (5x5)':
+            return 2
+        case 'FanGraphs Points':
+            return 3
+        case 'SABR Points':
+            return 4
+        case 'H2H FanGraphs Points':
+            return 5
+        case 'H2H SABR Points':
+            return 6
+        case 'H2H Ottoneu Classic (4x4)':
+            return 7
+        case 'H2H Old School (5x5)':
+            return 8
     raise AttributeError(f'The format name {format_name} was not recognized.')
 
 
@@ -112,4 +117,4 @@ def get_league_dict(lg_id: str) -> tuple[dict[str, Any], dict[int, str]]:
         teams = t_df.to_dict('index')
         return rosters, teams
 
-    return dict(), dict()
+    return {}, {}

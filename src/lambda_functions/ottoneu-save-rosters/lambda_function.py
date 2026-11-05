@@ -1,13 +1,15 @@
-import json
-from pymongo import MongoClient, UpdateOne
-import os
-import boto3
-import requests
-import pandas as pd
-from bs4 import BeautifulSoup as Soup
-from io import StringIO
 import datetime
+import json
+import os
+from io import StringIO
+from time import sleep
 from typing import Any
+
+import boto3
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup as Soup
+from pymongo import MongoClient, UpdateOne
 
 client = MongoClient(host=os.environ.get('ATLAS_URI'))
 ottoneu_db = client.ottoneu
@@ -62,6 +64,8 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f'Exception for league {league_id}')
             print(e)
+
+        sleep(5)
 
     if update_leagues:
         try:
